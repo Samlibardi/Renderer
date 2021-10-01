@@ -1,29 +1,29 @@
-#include "Model.h"
+#include "Object.h"
 
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 
-void Model::setTranslation(glm::vec3 translation) {
+void Object::setTranslation(glm::vec3 translation) {
     this->translation = translation;
     this->transformDirty = true;
 }
 
-void Model::setRotation(glm::vec3 eulerRotation) {
+void Object::setRotation(glm::vec3 eulerRotation) {
     this->rotation = glm::quat(eulerRotation);
     this->transformDirty = true;
 }
 
-void Model::setRotation(glm::qua<float> quaternionRotation) {
+void Object::setRotation(glm::qua<float> quaternionRotation) {
     this->rotation = quaternionRotation;
     this->transformDirty = true;
 }
 
-void Model::setScale(glm::vec3 scale) {
+void Object::setScale(glm::vec3 scale) {
     this->translation = translation;
     this->transformDirty = true;
 }
 
-glm::mat4 Model::getTransformMatrix()
+glm::mat4 Object::getTransformMatrix()
 {
     if (!this->transformDirty) {
         this->transform = glm::translate(this->translation) * glm::toMat4(this->rotation) * glm::scale(this->scale);

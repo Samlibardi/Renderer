@@ -7,6 +7,7 @@
 #include <vk_mem_alloc.hpp>
 
 #include "Mesh.h"
+#include "PointLight.h"
 
 #pragma once
 class VulkanRenderer
@@ -18,6 +19,7 @@ public:
 
 	void setMesh(Mesh & mesh);
 	void setTexture(std::vector<byte> & imageBinary, uint32_t width, uint32_t height);
+	void setLights(std::vector<PointLight> lights);
 
 
 private:
@@ -57,6 +59,9 @@ private:
 	vk::Buffer vertexBuffer;
 	vk::Buffer indexBuffer;
 	vk::DeviceMemory vertexBufferMemory;
+
+	vk::Buffer lightsBuffer;
+	vk::DeviceMemory lightsBufferMemory;
 
 	vk::Image textureImage;
 	vk::ImageView textureImageView;

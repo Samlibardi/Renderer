@@ -156,7 +156,8 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Material.cpp" />
     <ClCompile Include="Mesh.cpp" />
-    <ClCompile Include="Model.cpp" />
+    <ClCompile Include="Object.cpp" />
+    <ClCompile Include="PointLight.cpp" />
     <ClCompile Include="Vertex.cpp" />
     <ClCompile Include="vma.cpp" />
     <ClCompile Include="VulkanRenderer.cpp" />
@@ -164,7 +165,8 @@
   <ItemGroup>
     <ClInclude Include="Material.h" />
     <ClInclude Include="Mesh.h" />
-    <ClInclude Include="Model.h" />
+    <ClInclude Include="Object.h" />
+    <ClInclude Include="PointLight.h" />
     <ClInclude Include="Vertex.h" />
     <ClInclude Include="VulkanRenderer.h" />
   </ItemGroup>

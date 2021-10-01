@@ -7,9 +7,6 @@ layout(location = 3) in vec2 uv;
 
 layout(location = 0) out vec4 outColor;
 
-const vec3 lightPos = {10.0f, 120.0f, 90.0f};
-const vec3 lightIntensity = {900.0f,850.0f,700.0f};
-
 layout(push_constant) uniform constants {
     mat4 modelViewProj;
     mat4 model;
@@ -18,20 +15,39 @@ layout(push_constant) uniform constants {
 
 layout(binding=0) uniform sampler2D texSampler;
 
+struct PointLight {
+  vec3 position;
+  vec3 intensity;
+};
+
+layout(binding=1) readonly buffer lightsBuffer {
+   PointLight lights[];
+};
+
 void main() {
-    float d = distance(position, lightPos);
-    vec3 L = normalize(lightPos - position);
     vec3 N = normalize(normal);
-    vec3 R = normalize(2 * (dot(L, N) * N) - L);
     vec3 V = normalize(vec3(cameraPos) - position);
 
-    vec3 lightIntensityAtt = lightIntensity/d/d;
+    vec3 albedo =  texture(texSampler, uv).rgb;
+
+    vec3 Lo = vec3(0.0f);
     
-    vec3 ambient = 0.2f * color;
-    vec3 diffuse =  lightIntensityAtt * max(dot(L, N), 0.0f) * color;
-    vec3 specular = lightIntensityAtt * pow(max(dot(R, V),0.0f),16);
+    for(int i = 0; i < lights.length(); i++) {
+        float d = distance(position, lights[i].position);
+        vec3 L = normalize(lights[i].position - position);
+        vec3 R = normalize(2 * (dot(L, N) * N) - L);
 
-    outColor = vec4(diffuse + ambient + specular, 1.0f);
+        vec3 lightIntensityAtt = lights[i].intensity/(d*d);
+        vec3 diffuse =  0.7f * lightIntensityAtt * max(dot(L, N), 0.0f) *  albedo;
+        vec3 specular = 0.3f * lightIntensityAtt * pow(max(dot(R, V),0.0f), 16);
+        
+        Lo += diffuse + specular;
+    }
+    
+    vec3 ambient = 0.01f * albedo;
+    Lo += ambient;
 
-    outColor = texture(texSampler, uv);
+    Lo = Lo/ (Lo + vec3(1.0));
+    Lo = pow(Lo, vec3(1.0/2.2));  
+    outColor = vec4(Lo, 1.0f);
 }

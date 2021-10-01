@@ -1,10 +1,15 @@
 #pragma once
+#include <vector>
+#include <map>
 
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/gtx/quaternion.hpp>
 
-class Model
+#include "Vertex.h"
+#include "Material.h"
+
+class Object
 {
 public:
 	void setTranslation(glm::vec3 translation);
@@ -21,6 +26,8 @@ private:
 	bool transformDirty = true;
 	glm::mat4 transform;
 
+	std::vector<Vertex> vertices;
+	std::vector<Material> materials;
+	std::vector<std::vector<uint32_t>> indicesByMaterial;
 
 };
-

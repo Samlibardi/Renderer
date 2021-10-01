@@ -5,11 +5,13 @@
 
 #include "VulkanRenderer.h"
 
-#include "Vertex.h"
-#include "Mesh.h"
 #include <glm/mat4x4.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/normal.hpp>
+
+#include "Vertex.h"
+#include "Mesh.h"
+#include "PointLight.h"
 
 const int FRAMES_IN_FLIGHT = 2;
 
@@ -151,6 +153,35 @@ void VulkanRenderer::setTexture(std::vector<byte> & imageBinary, uint32_t width,
 	this->device.updateDescriptorSets(writeDescriptorSets, {});
 }
 
+void VulkanRenderer::setLights(std::vector<PointLight> lights) {
+
+	size_t bufferSize = lights.size() * sizeof(PointLight);
+	this->lightsBuffer = this->device.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eStorageBuffer, vk::SharingMode::eExclusive });
+
+	auto memRequirements = this->device.getBufferMemoryRequirements(this->lightsBuffer);
+
+	auto memProperties = this->physicalDevice.getMemoryProperties();
+
+	uint32_t selectedMemoryTypeIndex = 0;
+	for (auto&& [i, memoryType] : iter::enumerate(memProperties.memoryTypes)) {
+		if (memoryType.propertyFlags & (vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible)) {
+			selectedMemoryTypeIndex = i;
+			break;
+		}
+	}
+
+	this->lightsBufferMemory = this->device.allocateMemory(vk::MemoryAllocateInfo{ memRequirements.size , selectedMemoryTypeIndex });
+	this->device.bindBufferMemory(this->lightsBuffer, this->lightsBufferMemory, 0);
+
+	void* data = this->device.mapMemory(this->lightsBufferMemory, 0, bufferSize);
+	memcpy(data, lights.data(), lights.size() * sizeof(PointLight));
+	this->device.unmapMemory(this->lightsBufferMemory);
+
+	std::vector<vk::DescriptorBufferInfo> descriptorBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, 0, bufferSize } };
+	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = { vk::WriteDescriptorSet{ this->descriptorSets[0], 1, 0, vk::DescriptorType::eStorageBuffer, {}, descriptorBufferInfos } };
+	this->device.updateDescriptorSets(writeDescriptorSets, {});
+}
+
 void VulkanRenderer::setMesh(Mesh & mesh) {
 	this->destroyVertexBuffer();
 	this->mesh = mesh;
@@ -196,11 +227,11 @@ void VulkanRenderer::renderLoop() {
 		cb.bindVertexBuffers(0, this->vertexBuffer, { 0 });
 		cb.bindIndexBuffer(this->indexBuffer, 0, vk::IndexType::eUint16);
 		glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) *  glm::perspective(glm::radians(60.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.1f, 1000.0f);
-		glm::vec3 cameraPos{ 0.0f, 30.0f, 120.0f };
-		glm::mat4 view = glm::lookAt(cameraPos, glm::vec3{ 0.0f, 0.0f, 0.0f }, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::translate(-cameraPos);
-		glm::mat4 model = glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0)) * glm::translate<float>(glm::vec3{ 0.0f, -50.0f, 0.0f });
+		glm::vec3 cameraPos{ 0.0f, 1.0f, 4.0f };
+		glm::mat4 view = glm::translate(-cameraPos) * glm::lookAt(cameraPos, glm::vec3{ 0.0f, 0.0f, 0.0f }, glm::vec3{ 0.0f, 1.0f, 0.0f });
+		glm::mat4 model = glm::translate(glm::vec3{0.0f, -1.0f, 0.0f}) * glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0)) * glm::scale(glm::vec3(0.02f));
 		std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
-		float roughness = 0.3f;// 0.5f + glm::cos(0.33f * runningTime) / 2.0f;
+		float roughness = 0.5f + glm::cos(0.33f * runningTime) / 2.0f;
 		std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f), {0.0f, roughness, 1.0f, 0.0f } };
 		cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment , 0, pushConstantsMat);
 		cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4)*2, pushConstantsVec);
@@ -379,9 +410,9 @@ void VulkanRenderer::createPipeline() {
 
 	std::vector<vk::PushConstantRange> pushConstantRanges = { vk::PushConstantRange{ vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, sizeof(glm::mat4) * 2 + sizeof(glm::vec4) * 2 }, };
 
-	std::vector<vk::DescriptorSetLayoutBinding> descriptorSetBindings = { vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment} };
+	std::vector<vk::DescriptorSetLayoutBinding> descriptorSetBindings = { vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment}, vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment} };
 	this->descriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, descriptorSetBindings });
-	std::vector< vk::DescriptorPoolSize> poolSizes = { vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 1 } };
+	std::vector< vk::DescriptorPoolSize> poolSizes = { vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 1 }, vk::DescriptorPoolSize { vk::DescriptorType::eStorageBuffer, 1 } };
 	this->descriptorPool = this->device.createDescriptorPool(vk::DescriptorPoolCreateInfo{ {}, 1, poolSizes });
 	this->descriptorSets = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ descriptorPool, descriptorSetLayout });
 	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ {}, descriptorSetLayout, pushConstantRanges };

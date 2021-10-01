@@ -9,60 +9,14 @@
 #define STBI_MSC_SECURE_CRT
 #include <tiny_gltf.h>
 
+#include <glm/trigonometric.hpp>
+
 #include "Mesh.h"
 
 int main(size_t argc, char** argv) {
 	tinygltf::TinyGLTF gltfLoader;
 	tinygltf::Model gltfModel;
-	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\Lantern\\glTF\\Lantern.gltf");
-
-	Mesh cube;
-	cube.vertices = {
-			{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 0.5f, 1.0f}},
-			{{1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 0.5f, 1.0f}},
-			{{1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 0.5f, 1.0f}},
-			{{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.5f, 0.5f, 1.0f}},
-
-			{{0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.5f, 0.5f, 0.0f}},
-			{{1.0f, 0.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.5f, 0.5f, 0.0f}},
-			{{1.0f, 1.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.5f, 0.5f, 0.0f}},
-			{{0.0f, 1.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.5f, 0.5f, 0.0f}},
-
-			{{1.0f, 0.0f, -1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.5f, 0.5f}},
-			{{1.0f, 1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.5f, 0.5f}},
-			{{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.5f,  0.5f}},
-			{{1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.5f,  0.5f}},
-
-			{{0.0f, 0.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.5f}},
-			{{0.0f, 1.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.5f}},
-			{{0.0f, 1.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.5f}},
-			{{0.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.5f, 0.5f}},
-
-			{{1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}},
-			{{1.0f, 1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}},
-			{{0.0f, 1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}},
-			{{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f, 0.5f}},
-
-			{{1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}},
-			{{1.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}},
-			{{0.0f, 0.0f, -1.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}},
-			{{0.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.0f, 0.5f}},
-	};
-	cube.triangleIndices = {
-		0, 1, 2,
-		2, 3, 0,
-		4, 7, 6,
-		6, 5, 4,
-		8, 9, 10,
-		10, 11, 8,
-		12, 15, 14,
-		14, 13, 12,
-		18, 16, 17,
-		18, 19, 16,
-		22, 21, 20,
-		23, 22, 20,
-	};
-
+	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\Duck\\glTF\\Duck.gltf");
 
 	Mesh loadedMesh;
 
@@ -73,24 +27,28 @@ int main(size_t argc, char** argv) {
 			const auto& posAccessor = gltfModel.accessors[mesh.primitives[0].attributes.at("POSITION")];
 			const auto& posBufferView = gltfModel.bufferViews[posAccessor.bufferView];
 			const auto& posBuffer = gltfModel.buffers[posBufferView.buffer];
+			const byte* posData = &posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset];
 
 			const auto& normalAccessor = gltfModel.accessors[mesh.primitives[0].attributes.at("NORMAL")];
 			const auto& normalBufferView = gltfModel.bufferViews[normalAccessor.bufferView];
 			const auto& normalBuffer = gltfModel.buffers[normalBufferView.buffer];
+			const byte* normalData = &normalBuffer.data[normalBufferView.byteOffset + normalAccessor.byteOffset];
 
 			const auto& uvAccessor = gltfModel.accessors[mesh.primitives[0].attributes.at("TEXCOORD_0")];
 			const auto& uvBufferView = gltfModel.bufferViews[uvAccessor.bufferView];
 			const auto& uvBuffer = gltfModel.buffers[uvBufferView.buffer];
+			const byte* uvData = &uvBuffer.data[uvBufferView.byteOffset + uvAccessor.byteOffset];
 
 			loadedMesh.vertices.reserve(posAccessor.count);
 			for (size_t i = 0; i < posAccessor.count; i++) {
 				Vertex v{};
-				const float* p = reinterpret_cast<const float*>(&posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset]);
-				v.pos = { p[i * 3 + 0], p[i * 3 + 1], p[i * 3 + 2] };
-				const float* n = reinterpret_cast<const float*>(&normalBuffer.data[normalBufferView.byteOffset + normalAccessor.byteOffset]);
-				v.normal = { n[i * 3 + 0], n[i * 3 + 1], n[i * 3 + 2] };
-				const float* u = reinterpret_cast<const float*>(&uvBuffer.data[uvBufferView.byteOffset + uvAccessor.byteOffset]);
-				v.uv = { u[i * 2 + 0], u[i * 2 + 1] };
+				const float* p;
+				p = reinterpret_cast<const float*>(&posData[i * posBufferView.byteStride]);
+				v.pos = { p[0], p[1], p[2] };
+				p = reinterpret_cast<const float*>(&normalData[i * normalBufferView.byteStride]);
+				v.normal = { p[0], p[1], p[2] };
+				p = reinterpret_cast<const float*>(&uvData[i * uvBufferView.byteStride]);
+				v.uv = { p[0], p[1] };
 				loadedMesh.vertices.push_back(v);
 			}
 
@@ -101,24 +59,25 @@ int main(size_t argc, char** argv) {
 			loadedMesh.triangleIndices.reserve(indicesAccessor.count);
 			for (size_t i = 0; i < indicesAccessor.count; i++) {
 				uint16_t index;
+				const byte* p = &indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset];
 				switch (indicesAccessor.componentType) {
 				case TINYGLTF_COMPONENT_TYPE_BYTE:
-					index = *(reinterpret_cast<const int8_t*>(&indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset]) + i);
+					index = reinterpret_cast<const int8_t*>(p)[i];
 					break;
 				case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
-					index = *(reinterpret_cast<const uint8_t*>(&indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset]) + i);
+					index = reinterpret_cast<const uint8_t*>(p)[i];
 					break;
 				case TINYGLTF_COMPONENT_TYPE_SHORT:
-					index = *(reinterpret_cast<const int16_t*>(&indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset]) + i);
+					index = reinterpret_cast<const int16_t*>(p)[i];
 					break;
 				case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
-					index = *(reinterpret_cast<const uint16_t*>(&indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset]) + i);
+					index = reinterpret_cast<const uint16_t*>(p)[i];
 					break;
 				case TINYGLTF_COMPONENT_TYPE_INT:
-					index = *(reinterpret_cast<const int32_t*>(&indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset]) + i);
+					index = reinterpret_cast<const int32_t*>(p)[i];
 					break;
 				case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
-					index = *(reinterpret_cast<const uint32_t*>(&indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset]) + i);
+					index = reinterpret_cast<const uint32_t*>(p)[i];
 					break;
 				}
 				loadedMesh.triangleIndices.push_back(index);
@@ -128,6 +87,13 @@ int main(size_t argc, char** argv) {
 	}
 
 	VulkanRenderer renderer;
+	std::vector<PointLight> lights{};
+	for (int i = 0; i < 16; i++) {
+		const float angle = glm::radians(360.0f) / 16 * i;
+		const float radius = 10.0f;
+		lights.push_back(PointLight{ {radius * glm::sin(angle), 10.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
+	}
+	renderer.setLights(lights);
 	renderer.setTexture(gltfModel.images[0].image, gltfModel.images[0].width, gltfModel.images[0].height);
 	renderer.setMesh(loadedMesh);
 	renderer.run();

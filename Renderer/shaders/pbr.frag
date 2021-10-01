@@ -9,9 +9,6 @@ layout(location = 3) in vec2 uv;
 
 layout(location = 0) out vec4 outColor;
 
-const vec3 lightPos = {500.0f, 400.0f, 900.0f};
-const vec3 lightIntensity = {1900.0f,1850.0f,1200.0f};
-
 layout(push_constant) uniform constants {
     mat4 modelViewProj;
     mat4 model;
@@ -20,6 +17,15 @@ layout(push_constant) uniform constants {
 };
 
 layout(binding=0) uniform sampler2D texSampler;
+
+struct PointLight {
+  vec3 position;
+  vec3 intensity;
+};
+
+layout(binding=1) readonly buffer lightsBuffer {
+   PointLight lights[];
+};
 
 float DistributionGGX(vec3 N, vec3 H, float roughness);
 float GeometrySchlickGGX(float NdotV, float roughness);
@@ -44,29 +50,34 @@ void main()
     // reflectance equation
     vec3 Lo = vec3(0.0);
 
-    // calculate per-light radiance
-    vec3 L = normalize(lightPos - position);
-    vec3 H = normalize(V + L);
-    float d = distance(lightPos, position);
-    float attenuation = 1.0 / (d);
-    vec3 radiance = lightIntensity * attenuation;
+    for(int i = 0; i < lights.length(); i++) {
+        vec3 lightPos = lights[i].position;
+        vec3 lightIntensity = lights[i].intensity;
+
+        // calculate per-light radiance
+        vec3 L = normalize(lightPos - position);
+        vec3 H = normalize(V + L);
+        float d = distance(lightPos, position);
+        float attenuation = 1.0 / (d*d);
+        vec3 radiance = lightIntensity * attenuation;
         
-    // cook-torrance brdf
-    float NDF = DistributionGGX(N, H, roughness);        
-    float G   = GeometrySmith(N, V, L, roughness);      
-    vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);       
+        // cook-torrance brdf
+        float NDF = DistributionGGX(N, H, roughness);        
+        float G   = GeometrySmith(N, V, L, roughness);      
+        vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);       
         
-    vec3 kS = F;
-    vec3 kD = vec3(1.0) - kS;
-    kD *= 1.0 - metallic;	  
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metallic;	  
         
-    vec3 numerator    = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-    vec3 specular     = numerator / denominator;  
+        vec3 numerator    = NDF * G * F;
+        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+        vec3 specular     = numerator / denominator;
             
-    // add to outgoing radiance Lo
-    float NdotL = max(dot(N, L), 0.0);                
-    Lo += (kD * albedo / PI + specular) * radiance * NdotL; 
+        // add to outgoing radiance Lo
+        float NdotL = max(dot(N, L), 0.0);                
+        Lo += (kD * albedo / PI + specular) * radiance * NdotL; 
+    }
 
     vec3 ambient = vec3(0.03) * albedo * ao;
     vec3 color = ambient + Lo;
@@ -103,8 +114,8 @@ float GeometrySchlickGGX(float NdotV, float roughness)
 }
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 {
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
+    float NdotV = max(dot(N, V), 0.0001);
+    float NdotL = max(dot(N, L), 0.0001);
     float ggx2  = GeometrySchlickGGX(NdotV, roughness);
     float ggx1  = GeometrySchlickGGX(NdotL, roughness);
 	
@@ -113,5 +124,5 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+    return F0 + (1.0 - F0) * pow(1.0 - clamp(cosTheta, 0.0, 1.0), 5.0);
 }
