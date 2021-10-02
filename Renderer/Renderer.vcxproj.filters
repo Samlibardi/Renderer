@@ -64,5 +64,11 @@
     <None Include="shaders\pbr.frag">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="shaders\env.frag">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="shaders\env.vert">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

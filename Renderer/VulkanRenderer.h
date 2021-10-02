@@ -1,5 +1,6 @@
 #include <thread>
 #include <tuple>
+#include <array>
 
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.hpp>
@@ -37,6 +38,7 @@ public:
 
 	void setMesh(Mesh & mesh);
 	void setTextures(TextureInfo albedo, TextureInfo normal, TextureInfo metallicRoughness, TextureInfo ao, TextureInfo emissive);
+	void setEnvironmentMap(std::array<TextureInfo, 6> faces);
 	void setLights(std::vector<PointLight> lights);
 	void setPBRParameters(PBRInfo parameters);
 
@@ -86,10 +88,16 @@ private:
 	vk::Buffer pbrBuffer;
 	vma::Allocation pbrBufferAllocation;
 
+	vk::Pipeline envPipeline;
+	vk::PipelineLayout envPipelineLayout;
+	vk::Image envMapImage;
+	vk::ImageView envMapImageView;
+	vma::Allocation envMapAllocation;
+
 	std::vector<std::tuple<vk::Image, vk::ImageView, vma::Allocation>> textures;
 	vk::Sampler textureSampler;
 
-	std::vector<vk::ShaderModule> shaderModules;
+	std::vector<vk::ShaderModule> shaderModules{};
 
 	std::vector<vk::Semaphore> acquireImageSemaphores;
 	std::vector<vk::Semaphore> presentSemaphores;
@@ -106,6 +114,7 @@ private:
 	void createPipeline();
 	void createVertexBuffer();
 	void destroyVertexBuffer();
+	void createEnvPipeline();
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 	void stageTexture(vk::Image image, TextureInfo& textureInfo);

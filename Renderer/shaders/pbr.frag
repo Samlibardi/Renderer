@@ -40,6 +40,10 @@ layout(set=0, binding=0) readonly buffer lightsBuffer {
    PointLight lights[];
 };
 
+layout(set=0, binding=1) uniform samplerCube environmentSampler;
+
+
+vec3 BRDF(vec3 radiance, vec3 L, vec3 N,  vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0);
 float DistributionGGX(vec3 N, vec3 H, float roughness);
 float GeometrySchlickGGX(float NdotV, float roughness);
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
@@ -61,6 +65,8 @@ void main()
     N = normalize(TBN * N);
 
     vec3 V = normalize(vec3(cameraPos) - position);
+    
+    vec3 Rv = normalize(2 * (dot(V, N) * N) - V);
 
     vec3 F0 = vec3(0.04); 
     F0 = mix(F0, albedo, metallic);
@@ -71,14 +77,30 @@ void main()
     for(int i = 0; i < lights.length(); i++) {
         vec3 lightPos = lights[i].position;
         vec3 lightIntensity = lights[i].intensity;
-
+        
         // calculate per-light radiance
         vec3 L = normalize(lightPos - position);
-        vec3 H = normalize(V + L);
         float d = distance(lightPos, position);
         float attenuation = 1.0 / (d*d);
         vec3 radiance = lightIntensity * attenuation;
         
+        Lo += BRDF(radiance, L, N, V, albedo, roughness, metallic, F0);
+    }
+
+    Lo += 0.0001f * BRDF(texture(environmentSampler, Rv).xyz, Rv, N, V, albedo, roughness, metallic, F0);
+
+    vec3 ambient = vec3(0.03) * albedo * ao;
+    vec3 color = ambient + Lo + emissive;
+	
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0/2.2));  
+   
+    outColor = vec4(color, 1.0);
+}
+
+vec3 BRDF(vec3 radiance, vec3 L, vec3 N,  vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0) {
+        vec3 H = normalize(V + L);
+
         // cook-torrance brdf
         float NDF = DistributionGGX(N, H, roughness);        
         float G   = GeometrySmith(N, V, L, roughness);      
@@ -94,16 +116,7 @@ void main()
             
         // add to outgoing radiance Lo
         float NdotL = max(dot(N, L), 0.0);                
-        Lo += (kD * albedo / PI + specular) * radiance * NdotL; 
-    }
-
-    vec3 ambient = vec3(0.03) * albedo * ao;
-    vec3 color = ambient + Lo + emissive;
-	
-    color = color / (color + vec3(1.0));
-    color = pow(color, vec3(1.0/2.2));  
-   
-    outColor = vec4(color, 1.0);
+        return (kD * albedo / PI + specular) * radiance * NdotL; 
 }
 
 float DistributionGGX(vec3 N, vec3 H, float roughness)

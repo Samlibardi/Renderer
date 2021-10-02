@@ -29,10 +29,24 @@ template<uint32_t N> std::vector<glm::vec<N, float>> readAttribute(const tinyglt
 	return values;
 }
 
+TextureInfo loadTexture(const char* path) {
+	int w, h, n;
+	byte* d = stbi_load(path, &w, &h, &n, 0);
+	size_t len = static_cast<size_t>(w) * h * n;
+
+	std::vector<byte> data;
+	data.resize(len);
+	memcpy(data.data(), d, len);
+
+	stbi_image_free(d);
+
+	return TextureInfo{ data, static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
+}
+
 int main(size_t argc, char** argv) {
 	tinygltf::TinyGLTF gltfLoader;
 	tinygltf::Model gltfModel;
-	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\Fox\\glTF\\Fox.gltf");
+	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\EnvironmentTest\\glTF\\EnvironmentTest.gltf");
 
 	Mesh loadedMesh;
 	bool meshHasTangents = false;
@@ -110,8 +124,8 @@ int main(size_t argc, char** argv) {
 	}
 
 	VulkanRenderer renderer;
-	std::vector<PointLight> lights{};
-	for (int i = 0; i < 16; i++) {
+	std::vector<PointLight> lights{ {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}} };
+	for (int i = 0; i < 0; i++) {
 		const float angle = glm::radians(360.0f) / 16 * i;
 		const float radius = 10.0f;
 		lights.push_back(PointLight{ {radius * glm::sin(angle), 10.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
@@ -156,5 +170,16 @@ int main(size_t argc, char** argv) {
 	if(!meshHasTangents)
 		loadedMesh.calculateTangents();
 	renderer.setMesh(loadedMesh);
+
+	std::array<TextureInfo, 6> cubeFaces = {
+		loadTexture("./environment/px.png"),
+		loadTexture("./environment/nx.png"),
+		loadTexture("./environment/py.png"),
+		loadTexture("./environment/ny.png"),
+		loadTexture("./environment/pz.png"),
+		loadTexture("./environment/nz.png"),
+	};
+	renderer.setEnvironmentMap(cubeFaces);
+
 	renderer.run();
 }

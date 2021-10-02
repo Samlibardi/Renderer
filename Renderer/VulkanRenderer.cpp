@@ -18,7 +18,7 @@ const int FRAMES_IN_FLIGHT = 2;
 VulkanRenderer::VulkanRenderer() {
 	vkfw::init();
 
-	this->window = vkfw::createWindow(1280, 800, "Hello Vulkan", {}, {});
+	this->window = vkfw::createWindow(1920, 900, "Hello Vulkan", {}, {});
 	this->window.set<vkfw::Attribute::eResizable>(false);
 
 	vk::ApplicationInfo appInfo{"Custom Vulkan Renderer", 1};
@@ -45,6 +45,7 @@ VulkanRenderer::VulkanRenderer() {
 	this->createSwapchain();
 	this->createRenderPass();
 	this->createPipeline();
+	this->createEnvPipeline();
 	this->textureSampler = this->device.createSampler(vk::SamplerCreateInfo{ {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat, 0.0f, true, this->physicalDevice.getProperties().limits.maxSamplerAnisotropy, false });
 
 	this->acquireImageSemaphores.reserve(FRAMES_IN_FLIGHT);
@@ -134,13 +135,6 @@ void VulkanRenderer::stageTexture(vk::Image image, TextureInfo& textureInfo) {
 	this->device.destroyFence(fence);
 }
 
-void VulkanRenderer::setPBRParameters(PBRInfo parameters)
-{
-	PBRInfo& pbrBufferData = *reinterpret_cast<PBRInfo*>(this->allocator.mapMemory(this->pbrBufferAllocation));
-	pbrBufferData = parameters;
-	this->allocator.unmapMemory(this->pbrBufferAllocation);
-}
-
 void VulkanRenderer::setTextures(TextureInfo albedoInfo, TextureInfo normalInfo, TextureInfo metallicRoughnessInfo, TextureInfo aoInfo, TextureInfo emissiveInfo) {
 	auto albedo = this->createImageFromTextureInfo(albedoInfo);
 	auto normal = this->createImageFromTextureInfo(normalInfo);
@@ -176,7 +170,59 @@ void VulkanRenderer::setTextures(TextureInfo albedoInfo, TextureInfo normalInfo,
 	this->textures.push_back(emissive);
 }
 
+void VulkanRenderer::setEnvironmentMap(std::array<TextureInfo, 6> textureInfos) {
+	std::tie(this->envMapImage, this->envMapAllocation) = this->allocator.createImage(
+		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Unorm, vk::Extent3D{textureInfos[0].width, textureInfos[0].height, 1}, 1, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
+		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
+	);
+
+	this->envMapImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapImage, vk::ImageViewType::eCube, vk::Format::eR8G8B8A8Unorm, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6 } });
+
+	auto [stagingBuffer, sbAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {},  textureInfos[0].data.size() * sizeof(byte), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
+
+	void* sbData = this->allocator.mapMemory(sbAllocation);
+
+	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
+	vk::Fence fence = this->device.createFence(vk::FenceCreateInfo{});
+
+	for (auto&& [i, textureInfo] : iter::enumerate(textureInfos)) {
+		memcpy(sbData, textureInfo.data.data(), textureInfo.data.size() * sizeof(byte));
+		
+		cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->envMapImage, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, static_cast<uint32_t>(i), 1} });
+		std::vector<vk::BufferImageCopy> copyRegions = { vk::BufferImageCopy{0, 0, 0, vk::ImageSubresourceLayers{vk::ImageAspectFlagBits::eColor, 0, static_cast<uint32_t>(i), 1}, {0, 0, 0}, {textureInfo.width, textureInfo.height, 1}  } };
+		cb.copyBufferToImage(stagingBuffer, this->envMapImage, vk::ImageLayout::eTransferDstOptimal, copyRegions);
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->envMapImage, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, static_cast<uint32_t>(i), 1} });
+		cb.end();
+
+		this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, {} }, fence);
+		this->device.waitForFences(fence, true, UINT64_MAX);
+		this->device.resetFences(fence);
+	}
+
+	this->allocator.unmapMemory(sbAllocation);
+	this->allocator.destroyBuffer(stagingBuffer, sbAllocation);
+	this->device.destroyFence(fence);
+
+	std::vector<vk::DescriptorImageInfo> imageInfos = { vk::DescriptorImageInfo{this->textureSampler, this->envMapImageView, vk::ImageLayout::eShaderReadOnlyOptimal } };
+
+	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
+		vk::WriteDescriptorSet{ this->descriptorSets[0], 1, 0, vk::DescriptorType::eCombinedImageSampler, imageInfos },
+	};
+	this->device.updateDescriptorSets(writeDescriptorSets, {});
+}
+
+
+void VulkanRenderer::setPBRParameters(PBRInfo parameters)
+{
+	PBRInfo& pbrBufferData = *reinterpret_cast<PBRInfo*>(this->allocator.mapMemory(this->pbrBufferAllocation));
+	pbrBufferData = parameters;
+	this->allocator.unmapMemory(this->pbrBufferAllocation);
+}
+
 void VulkanRenderer::setLights(std::vector<PointLight> lights) {
+	if (!lights.size())
+		return;
 
 	size_t bufferSize = lights.size() * sizeof(PointLight);
 	this->lightsBuffer = this->device.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eStorageBuffer, vk::SharingMode::eExclusive });
@@ -250,10 +296,11 @@ void VulkanRenderer::renderLoop() {
 		cb.bindVertexBuffers(0, this->vertexBuffer, { 0 });
 		if(this->mesh.isIndexed)
 			cb.bindIndexBuffer(this->indexBuffer, 0, vk::IndexType::eUint32);
-		glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) *  glm::perspective(glm::radians(60.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.1f, 1000.0f);
-		glm::vec3 cameraPos{ 0.0f, 0.2f, 3.0f };
-		glm::mat4 view = glm::translate(-cameraPos) * glm::lookAt(cameraPos, glm::vec3{ 0.0f, 0.0f, 0.0f }, glm::vec3{ 0.0f, 1.0f, 0.0f });
-		glm::mat4 model = glm::translate(glm::vec3{0.0f, -1.0f, 0.0f}) * glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0)) *glm::scale(glm::vec3(0.01f));
+		glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) *  glm::perspective(glm::radians(35.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.1f, 1000.0f);
+		glm::vec3 cameraPos{ -6.0f, 0.2f, 6.0f };
+		glm::mat4 viewNoTrans = glm::rotate<float>(0.0f * runningTime, glm::vec3(0.0, 1.0, 0.0)); // *glm::lookAt(cameraPos, glm::vec3{ 0.0f, 0.0f, 0.0f }, glm::vec3{ 0.0f, 1.0f, 0.0f });
+		glm::mat4 view = viewNoTrans * glm::translate(-cameraPos);
+		glm::mat4 model = glm::translate(glm::vec3{ 0.0f, -1.0f, 0.0f });// *glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0))* glm::scale(glm::vec3(1.0f));
 		std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
 		float roughness = 0.5f + glm::cos(0.33f * runningTime) / 2.0f;
 		std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
@@ -264,6 +311,12 @@ void VulkanRenderer::renderLoop() {
 			cb.drawIndexed(this->mesh.triangleIndices.size(), 1, 0, 0, 0);
 		else
 			cb.draw(this->mesh.vertices.size(), 1, 0, 0);
+
+		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, this->descriptorSets[0], {});
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->envPipeline);
+		pushConstantsMat = { glm::inverse(proj * viewNoTrans) };
+		cb.pushConstants<glm::mat4x4>(this->envPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
+		cb.draw(6, 1, 0, 0);
 
 		cb.endRenderPass();
 		cb.end();
@@ -448,11 +501,14 @@ void VulkanRenderer::createPipeline() {
 	};
 	this->pbrDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, pbrSetBindings });
 
-	std::vector<vk::DescriptorSetLayoutBinding> globalDescriptorSetBindings = {  vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment} };
+	std::vector<vk::DescriptorSetLayoutBinding> globalDescriptorSetBindings = {  
+		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment},
+		vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+	};
 	this->globalDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, globalDescriptorSetBindings });
 
-	std::vector< vk::DescriptorPoolSize> poolSizes = { vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer, 1 }, vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 5 }, vk::DescriptorPoolSize { vk::DescriptorType::eStorageBuffer, 1 } };
-	this->descriptorPool = this->device.createDescriptorPool(vk::DescriptorPoolCreateInfo{ {}, 2, poolSizes });
+	std::vector< vk::DescriptorPoolSize> poolSizes = { vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer, 1 }, vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 7 }, vk::DescriptorPoolSize { vk::DescriptorType::eStorageBuffer, 1 } };
+	this->descriptorPool = this->device.createDescriptorPool(vk::DescriptorPoolCreateInfo{ {}, 3, poolSizes });
 	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout, this->pbrDescriptorSetLayout };
 	this->descriptorSets = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ descriptorPool, setLayouts });
 
@@ -518,4 +574,53 @@ void VulkanRenderer::createVertexBuffer() {
 void VulkanRenderer::destroyVertexBuffer() {
 	this->allocator.destroyBuffer(this->vertexBuffer, this->vertexBufferAllocation);
 	this->allocator.destroyBuffer(this->indexBuffer, this->indexBufferAllocation);
+}
+
+
+void VulkanRenderer::createEnvPipeline() {
+	std::vector<uint32_t> vertexBytecode = readShaderFile("./shaders/env.vert.spv");
+	vk::ShaderModule vertexModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, vertexBytecode });
+	vk::PipelineShaderStageCreateInfo vertexStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vertexModule, "main" };
+	this->shaderModules.push_back(vertexModule);
+
+	std::vector<uint32_t> fragBytecode = readShaderFile("./shaders/env.frag.spv");
+	vk::ShaderModule fragModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, fragBytecode });
+	vk::PipelineShaderStageCreateInfo fragStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fragModule, "main" };
+	this->shaderModules.push_back(fragModule);
+
+	std::vector<vk::PipelineShaderStageCreateInfo> shaderStagesInfo = { vertexStageInfo, fragStageInfo };
+
+	vk::PipelineVertexInputStateCreateInfo vertexInputInfo{ {}, {}, {} };
+
+	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo{ {}, vk::PrimitiveTopology::eTriangleList, false };
+
+	std::vector<vk::Viewport> viewports = { vk::Viewport{ 0.0f, 0.0f, static_cast<float>(this->swapchainExtent.width), static_cast<float>(this->swapchainExtent.height), 0.0f, 0.1f } };
+	std::vector<vk::Rect2D> scissors = { vk::Rect2D({0, 0}, this->swapchainExtent) };
+
+	vk::PipelineViewportStateCreateInfo viewportInfo{ {}, viewports, scissors };
+
+	vk::PipelineRasterizationStateCreateInfo rasterizationInfo{ {}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise, false, 0.0f, 0.0f, 0.0f, 1.0f };
+
+	vk::PipelineDepthStencilStateCreateInfo depthStencilInfo{ {}, true, true, vk::CompareOp::eLess };
+
+	vk::PipelineMultisampleStateCreateInfo multisampleInfo;
+
+	vk::PipelineColorBlendAttachmentState colorBlendAttachment(false, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+	vk::PipelineColorBlendStateCreateInfo colorBlendInfo{ {}, false, vk::LogicOp::eCopy, colorBlendAttachment };
+
+	//std::vector<vk::DynamicState> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eLineWidth };
+	std::vector<vk::DynamicState> dynamicStates = { };
+	vk::PipelineDynamicStateCreateInfo dynamicStateInfo{ {}, dynamicStates };
+
+
+	std::vector<vk::PushConstantRange> pushConstantRanges = { vk::PushConstantRange{ vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, sizeof(glm::mat4) * 1 }, };
+
+	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout };
+
+	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ {}, setLayouts, pushConstantRanges };
+
+	this->envPipelineLayout = this->device.createPipelineLayout(pipelineLayoutInfo);
+
+	auto [r, pipeline] = this->device.createGraphicsPipeline(vk::PipelineCache(), vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, this->envPipelineLayout, this->renderPass, 0 });
+	this->envPipeline = pipeline;
 }
