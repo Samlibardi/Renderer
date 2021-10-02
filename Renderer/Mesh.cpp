@@ -41,9 +41,13 @@ void Mesh::calculateTangents()
 				(t2 * z1 - t1 * z2) * f 
 			};
 
-			v0.tangent += sdir;
-			v1.tangent += sdir;
-			v2.tangent += sdir;
+			v0.tangent = sdir;
+			v1.tangent = sdir;
+			v2.tangent = sdir;
+
+			v0.bitangent = glm::cross(v0.normal, v0.tangent);
+			v1.bitangent = glm::cross(v1.normal, v1.tangent);
+			v2.bitangent = glm::cross(v2.normal, v2.tangent);
 		}
 	}
 	else {

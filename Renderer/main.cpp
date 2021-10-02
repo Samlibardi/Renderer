@@ -32,7 +32,7 @@ template<uint32_t N> std::vector<glm::vec<N, float>> readAttribute(const tinyglt
 int main(size_t argc, char** argv) {
 	tinygltf::TinyGLTF gltfLoader;
 	tinygltf::Model gltfModel;
-	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\Suzanne\\glTF\\Suzanne.gltf");
+	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\SciFiHelmet\\glTF\\SciFiHelmet.gltf");
 
 	Mesh loadedMesh;
 	bool meshHasTangents = false;
