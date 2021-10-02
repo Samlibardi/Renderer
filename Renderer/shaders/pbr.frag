@@ -1,11 +1,13 @@
 #version 450
+#extension GL_KHR_vulkan_glsl: enable
 
 #define PI radians(180)
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
-layout(location = 2) in vec3 baseAlbedo;
-layout(location = 3) in vec2 uv;
+layout(location = 2) in vec3 tangent;
+layout(location = 3) in vec3 bitangent;
+layout(location = 4) in vec2 uv;
 
 layout(location = 0) out vec4 outColor;
 
@@ -16,14 +18,26 @@ layout(push_constant) uniform constants {
     vec4 materialParams;
 };
 
-layout(binding=0) uniform sampler2D texSampler;
+layout(set=1, binding=0) uniform materialInfo {
+  vec4 baseColorFactor;
+  vec4 emissiveFactor;
+  float normalScale;
+  float metallicFactor;
+  float roughnessFactor;
+  float aoFactor;
+};
+layout(set=1, binding=1) uniform sampler2D albedoSampler;
+layout(set=1, binding=2) uniform sampler2D normalSampler;
+layout(set=1, binding=3) uniform sampler2D metalRoughSampler;
+layout(set=1, binding=4) uniform sampler2D aoSampler;
+layout(set=1, binding=5) uniform sampler2D emissiveSampler;
 
 struct PointLight {
   vec3 position;
   vec3 intensity;
 };
 
-layout(binding=1) readonly buffer lightsBuffer {
+layout(set=0, binding=0) readonly buffer lightsBuffer {
    PointLight lights[];
 };
 
@@ -34,14 +48,19 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0);
 
 void main()
 {	
-    vec3 albedo = texture(texSampler, uv).rgb;
+    vec3 albedo = (texture(albedoSampler, uv) * baseColorFactor).rgb;
+    vec4 metalRoughMap = texture(metalRoughSampler, uv) * vec4(0.0f, roughnessFactor, metallicFactor, 0.0f);
+    float metallic = metalRoughMap.b;
+    float roughness = metalRoughMap.g;
+    float ao = (texture(aoSampler, uv) * aoFactor).r;
+    vec3 emissive = texture(emissiveSampler, uv).rgb * emissiveFactor.rgb;
 
-    // material parameters
-    const float metallic = materialParams.x;
-    const float roughness = materialParams.y;
-    const float ao = materialParams.z;
+    mat3 TBN = mat3(normalize(tangent), normalize(bitangent), normalize(normal));
 
-    vec3 N = normalize(normal);
+    vec3 N = texture(normalSampler, uv).rgb;
+    N = N * 2.0 - 1.0;
+    N = normalize(TBN * N);
+
     vec3 V = normalize(vec3(cameraPos) - position);
 
     vec3 F0 = vec3(0.04); 
@@ -80,7 +99,7 @@ void main()
     }
 
     vec3 ambient = vec3(0.03) * albedo * ao;
-    vec3 color = ambient + Lo;
+    vec3 color = ambient + Lo + emissive;
 	
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(1.0/2.2));  

@@ -1,13 +1,31 @@
 #include <thread>
+#include <tuple>
 
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.hpp>
 #include <vkfw/vkfw.hpp>
 
+#include <glm/vec4.hpp>
+
 #include <vk_mem_alloc.hpp>
 
 #include "Mesh.h"
 #include "PointLight.h"
+
+typedef struct TextureInfo {
+	std::vector<byte> data = {0xff, 0xff, 0xff, 0xff};
+	uint32_t width = 1;
+	uint32_t height = 1;
+} TextureInfo;
+
+typedef struct {
+	glm::vec4 baseColorFactor;
+	glm::vec4 emissiveFactor;
+	float normalScale;
+	float metallicFactor;
+	float roughnessFactor;
+	float aoFactor;
+} PBRInfo;
 
 #pragma once
 class VulkanRenderer
@@ -18,9 +36,9 @@ public:
 	void run();
 
 	void setMesh(Mesh & mesh);
-	void setTexture(std::vector<byte> & imageBinary, uint32_t width, uint32_t height);
+	void setTextures(TextureInfo albedo, TextureInfo normal, TextureInfo metallicRoughness, TextureInfo ao, TextureInfo emissive);
 	void setLights(std::vector<PointLight> lights);
-
+	void setPBRParameters(PBRInfo parameters);
 
 private:
 	bool running = false;
@@ -52,20 +70,23 @@ private:
 	vk::Pipeline pipeline;
 	vk::PipelineLayout pipelineLayout;
 
-	vk::DescriptorSetLayout descriptorSetLayout;
 	vk::DescriptorPool descriptorPool;
+	vk::DescriptorSetLayout globalDescriptorSetLayout;
+	vk::DescriptorSetLayout pbrDescriptorSetLayout;
 	std::vector<vk::DescriptorSet> descriptorSets;
 
 	vk::Buffer vertexBuffer;
+	vma::Allocation vertexBufferAllocation;
 	vk::Buffer indexBuffer;
-	vk::DeviceMemory vertexBufferMemory;
+	vma::Allocation indexBufferAllocation;
 
 	vk::Buffer lightsBuffer;
 	vk::DeviceMemory lightsBufferMemory;
 
-	vk::Image textureImage;
-	vk::ImageView textureImageView;
-	vk::DeviceMemory textureMemory;
+	vk::Buffer pbrBuffer;
+	vma::Allocation pbrBufferAllocation;
+
+	std::vector<std::tuple<vk::Image, vk::ImageView, vma::Allocation>> textures;
 	vk::Sampler textureSampler;
 
 	std::vector<vk::ShaderModule> shaderModules;
@@ -85,5 +106,8 @@ private:
 	void createPipeline();
 	void createVertexBuffer();
 	void destroyVertexBuffer();
+
+	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
+	void stageTexture(vk::Image image, TextureInfo& textureInfo);
 };
 

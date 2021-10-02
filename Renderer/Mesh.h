@@ -4,15 +4,15 @@
 #include <map>
 
 #include "Vertex.h"
-#include "Material.h"
 
 class Mesh
 {
 public:
+	bool isIndexed = true;
 	std::vector<Vertex> vertices;
-	std::vector<Material> materials;
 	std::map<size_t, size_t> verticesByMaterial;
-	std::vector<uint16_t> triangleIndices;
+	std::vector<uint32_t> triangleIndices;
 
+	void calculateTangents();
 };
 

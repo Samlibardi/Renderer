@@ -6,8 +6,8 @@
 class Vertex
 {
 public:
-	glm::vec3 pos;
-	glm::vec3 normal;
-	glm::vec3 color = { 0.9f, 0.8f, 0.0f };
-	glm::vec2 uv = { 0.0f, 0.0f };
+	alignas(16) glm::vec3 pos;
+	alignas(16) glm::vec3 normal;
+	alignas(16) glm::vec3 tangent = glm::vec3(0.0f);
+	alignas(16) glm::vec2 uv = glm::vec3(0.0f);
 };

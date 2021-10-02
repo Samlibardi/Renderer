@@ -7,7 +7,6 @@
 #include <glm/gtx/quaternion.hpp>
 
 #include "Vertex.h"
-#include "Material.h"
 
 class Object
 {
@@ -27,7 +26,6 @@ private:
 	glm::mat4 transform;
 
 	std::vector<Vertex> vertices;
-	std::vector<Material> materials;
 	std::vector<std::vector<uint32_t>> indicesByMaterial;
 
 };
