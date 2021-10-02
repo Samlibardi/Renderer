@@ -11,54 +11,61 @@
 #include <tiny_gltf.h>
 
 #include <glm/trigonometric.hpp>
+#include <glm/geometric.hpp>
 
 #include "Mesh.h"
+
+template<uint32_t N> std::vector<glm::vec<N, float>> readAttribute(const tinygltf::Model& model, const tinygltf::Primitive& primitive, const char* attributeName) {
+	const auto& accessor = model.accessors[primitive.attributes.at(attributeName)];
+	const auto& bufferView = model.bufferViews[accessor.bufferView];
+	const auto& buffer = model.buffers[bufferView.buffer];
+	const byte* data = &buffer.data[bufferView.byteOffset + accessor.byteOffset];
+
+	std::vector<glm::vec<N, float>> values;
+	for (size_t i = 0; i < accessor.count; i++) {
+		const glm::vec<N, float>& p = *reinterpret_cast<const glm::vec<N, float>*>(&data[i * (bufferView.byteStride != 0 ? bufferView.byteStride : sizeof(float) * N)]);
+		values.push_back(p);
+	}
+	return values;
+}
 
 int main(size_t argc, char** argv) {
 	tinygltf::TinyGLTF gltfLoader;
 	tinygltf::Model gltfModel;
-	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\SciFiHelmet\\glTF\\SciFiHelmet.gltf");
+	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\Suzanne\\glTF\\Suzanne.gltf");
 
 	Mesh loadedMesh;
+	bool meshHasTangents = false;
 
 	for (auto& node : gltfModel.nodes) {
 		if (node.mesh > -1) {
 			const auto& mesh = gltfModel.meshes[node.mesh];
 			const auto& primitive = mesh.primitives[0];
 
-			const auto& posAccessor = gltfModel.accessors[primitive.attributes.at("POSITION")];
-			const auto& posBufferView = gltfModel.bufferViews[posAccessor.bufferView];
-			const auto& posBuffer = gltfModel.buffers[posBufferView.buffer];
-			const byte* posData = &posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset];
+			std::vector<glm::vec3> positions = readAttribute<3>(gltfModel, primitive, "POSITION");
+			loadedMesh.vertices.reserve(positions.size());
+			for (glm::vec3& p : positions)
+				loadedMesh.vertices.push_back(Vertex{ p });
 
-			const auto& normalAccessor = gltfModel.accessors[primitive.attributes.at("NORMAL")];
-			const auto& normalBufferView = gltfModel.bufferViews[normalAccessor.bufferView];
-			const auto& normalBuffer = gltfModel.buffers[normalBufferView.buffer];
-			const byte* normalData = &normalBuffer.data[normalBufferView.byteOffset + normalAccessor.byteOffset];
+			if (primitive.attributes.count("NORMAL")) {
+				std::vector<glm::vec3> normals = readAttribute<3>(gltfModel, primitive, "NORMAL");
+				for (size_t i = 0; i < loadedMesh.vertices.size(); i++)
+					loadedMesh.vertices[i].normal = normals[i];
+			}
 
-			const auto& uvAccessor = gltfModel.accessors[primitive.attributes.at("TEXCOORD_0")];
-			const auto& uvBufferView = gltfModel.bufferViews[uvAccessor.bufferView];
-			const auto& uvBuffer = gltfModel.buffers[uvBufferView.buffer];
-			const byte* uvData = &uvBuffer.data[uvBufferView.byteOffset + uvAccessor.byteOffset];
+			if (primitive.attributes.count("TEXCOORD_0")) {
+				std::vector<glm::vec2> uvs = readAttribute<2>(gltfModel, primitive, "TEXCOORD_0");
+				for (size_t i = 0; i < loadedMesh.vertices.size(); i++)
+					loadedMesh.vertices[i].uv = uvs[i];
+			}
 
-			const auto& tangentAccessor = gltfModel.accessors[primitive.attributes.at("TANGENT")];
-			const auto& tangentBufferView = gltfModel.bufferViews[tangentAccessor.bufferView];
-			const auto& tangentBuffer = gltfModel.buffers[tangentBufferView.buffer];
-			const byte* tangentData = &tangentBuffer.data[tangentBufferView.byteOffset + tangentAccessor.byteOffset];
-
-			loadedMesh.vertices.reserve(posAccessor.count);
-			for (size_t i = 0; i < posAccessor.count; i++) {
-				Vertex v{};
-				const float* p;
-				p = reinterpret_cast<const float*>(&posData[i * (posBufferView.byteStride != 0 ? posBufferView.byteStride : sizeof(float) * 3)]);
-				v.pos = { p[0], p[1], p[2] };
-				p = reinterpret_cast<const float*>(&normalData[i * (normalBufferView.byteStride != 0 ? normalBufferView.byteStride : sizeof(float) * 3)]);
-				v.normal = { p[0], p[1], p[2] };
-				p = reinterpret_cast<const float*>(&uvData[i * (uvBufferView.byteStride != 0 ? uvBufferView.byteStride : sizeof(float) * 2)]);
-				v.uv = { p[0], p[1] };
-				p = reinterpret_cast<const float*>(&tangentData[i * (tangentBufferView.byteStride != 0 ? tangentBufferView.byteStride : sizeof(float) * 3)]);
-				v.tangent = { p[0], p[1], p[2] };
-				loadedMesh.vertices.push_back(v);
+			if (primitive.attributes.count("TANGENT")) {
+				meshHasTangents = true;
+				std::vector<glm::vec4> tangents = readAttribute<4>(gltfModel, primitive, "TANGENT");
+				for (size_t i = 0; i < loadedMesh.vertices.size(); i++) {
+					loadedMesh.vertices[i].tangent = glm::vec3{ tangents[i].x, tangents[i].y, tangents[i].z };
+					loadedMesh.vertices[i].bitangent = glm::cross(loadedMesh.vertices[i].normal, loadedMesh.vertices[i].tangent) * tangents[i].w;
+				}
 			}
 
 			if (primitive.indices > -1) {
@@ -113,7 +120,7 @@ int main(size_t argc, char** argv) {
 	
 	
 	TextureInfo albedoInfo{};
-	TextureInfo normalInfo{};
+	TextureInfo normalInfo{ {0x80, 0x80, 0xff}, 1, 1 };
 	TextureInfo metallicRoughInfo{};
 	TextureInfo aoInfo{};
 	TextureInfo emissiveInfo{};
@@ -146,7 +153,8 @@ int main(size_t argc, char** argv) {
 	auto& ef = material.emissiveFactor;
 	renderer.setPBRParameters(PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) });
 
-	//loadedMesh.calculateTangents();
+	if(!meshHasTangents)
+		loadedMesh.calculateTangents();
 	renderer.setMesh(loadedMesh);
 	renderer.run();
 }

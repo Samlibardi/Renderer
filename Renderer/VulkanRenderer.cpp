@@ -404,12 +404,13 @@ void VulkanRenderer::createPipeline() {
 	std::vector<vk::PipelineShaderStageCreateInfo> shaderStagesInfo = { vertexStageInfo, fragStageInfo };
 	
 	vk::VertexInputBindingDescription vertexBindingDescription(0, sizeof(Vertex), vk::VertexInputRate::eVertex);
-
-	vk::VertexInputAttributeDescription vertexPosDescription(0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos));
-	vk::VertexInputAttributeDescription vertexNormalDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal));
-	vk::VertexInputAttributeDescription vertexTangentDescription(2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, tangent));
-	vk::VertexInputAttributeDescription vertexUVDescription(3, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, uv));
-	std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions = { vertexPosDescription, vertexNormalDescription, vertexTangentDescription, vertexUVDescription };
+	std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions = {
+		vk::VertexInputAttributeDescription{ 0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos) },
+		vk::VertexInputAttributeDescription{ 1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal) },
+		vk::VertexInputAttributeDescription{ 2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, tangent) },
+		vk::VertexInputAttributeDescription{ 3, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, bitangent) },
+		vk::VertexInputAttributeDescription{ 4, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, uv) }
+	};
 
 	vk::PipelineVertexInputStateCreateInfo vertexInputInfo{{}, vertexBindingDescription, vertexAttributeDescriptions};
 
