@@ -248,11 +248,12 @@ void VulkanRenderer::renderLoop() {
 		cb.beginRenderPass(vk::RenderPassBeginInfo{ this->renderPass, this->swapchainFramebuffers[imageIndex], vk::Rect2D({ 0, 0 }, this->swapchainExtent), clearValues }, vk::SubpassContents::eInline);
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline);
 		cb.bindVertexBuffers(0, this->vertexBuffer, { 0 });
-		cb.bindIndexBuffer(this->indexBuffer, 0, vk::IndexType::eUint32);
+		if(this->mesh.isIndexed)
+			cb.bindIndexBuffer(this->indexBuffer, 0, vk::IndexType::eUint32);
 		glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) *  glm::perspective(glm::radians(60.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.1f, 1000.0f);
 		glm::vec3 cameraPos{ 0.0f, 0.2f, 3.0f };
 		glm::mat4 view = glm::translate(-cameraPos) * glm::lookAt(cameraPos, glm::vec3{ 0.0f, 0.0f, 0.0f }, glm::vec3{ 0.0f, 1.0f, 0.0f });
-		glm::mat4 model = glm::translate(glm::vec3{0.0f, -1.0f, 0.0f}) * glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0)) *glm::scale(glm::vec3(1.5f));
+		glm::mat4 model = glm::translate(glm::vec3{0.0f, -1.0f, 0.0f}) * glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0)) *glm::scale(glm::vec3(0.01f));
 		std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
 		float roughness = 0.5f + glm::cos(0.33f * runningTime) / 2.0f;
 		std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
@@ -475,27 +476,35 @@ void VulkanRenderer::createPipeline() {
 }
 
 void VulkanRenderer::createVertexBuffer() {
+	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
+	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+
 	size_t vertexBufferSize = this->mesh.vertices.size() * sizeof(Vertex);
 	std::tie(this->vertexBuffer, this->vertexBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 
-	size_t indexBufferSize = this->mesh.triangleIndices.size() * sizeof(uint32_t);
-	std::tie(this->indexBuffer, this->indexBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, indexBufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	vk::Buffer vertexStagingBuffer, indexStagingBuffer;
+	vma::Allocation vertexSBAllocation, indexSBAllocation;
+	std::tie(vertexStagingBuffer, vertexSBAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
 
-	auto [vertexStagingBuffer, vertexSBAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
-	auto [indexStagingBuffer, indexSBAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
-	
 	void* vertexData = this->allocator.mapMemory(vertexSBAllocation);
-	void* indexData = this->allocator.mapMemory(indexSBAllocation);
 	memcpy(vertexData, this->mesh.vertices.data(), vertexBufferSize);
-	memcpy(indexData, this->mesh.triangleIndices.data(), indexBufferSize);
 	this->allocator.unmapMemory(vertexSBAllocation);
-	this->allocator.unmapMemory(indexSBAllocation);
 
-	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
-
-	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 	cb.copyBuffer(vertexStagingBuffer, this->vertexBuffer, vk::BufferCopy{0, 0, vertexBufferSize});
-	cb.copyBuffer(indexStagingBuffer, this->indexBuffer, vk::BufferCopy{0, 0, indexBufferSize});
+
+	if (this->mesh.isIndexed) {
+		size_t indexBufferSize = this->mesh.triangleIndices.size() * sizeof(uint32_t);
+
+		std::tie(this->indexBuffer, this->indexBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, indexBufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+		
+		std::tie(indexStagingBuffer, indexSBAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
+		
+		void* indexData = this->allocator.mapMemory(indexSBAllocation);
+		memcpy(indexData, this->mesh.triangleIndices.data(), indexBufferSize);
+		this->allocator.unmapMemory(indexSBAllocation);
+
+		cb.copyBuffer(indexStagingBuffer, this->indexBuffer, vk::BufferCopy{0, 0, indexBufferSize});
+	}
 	cb.end();
 
 	vk::Fence fence = this->device.createFence(vk::FenceCreateInfo{});

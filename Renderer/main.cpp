@@ -32,7 +32,7 @@ template<uint32_t N> std::vector<glm::vec<N, float>> readAttribute(const tinyglt
 int main(size_t argc, char** argv) {
 	tinygltf::TinyGLTF gltfLoader;
 	tinygltf::Model gltfModel;
-	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\SciFiHelmet\\glTF\\SciFiHelmet.gltf");
+	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\Fox\\glTF\\Fox.gltf");
 
 	Mesh loadedMesh;
 	bool meshHasTangents = false;
@@ -120,7 +120,7 @@ int main(size_t argc, char** argv) {
 	
 	
 	TextureInfo albedoInfo{};
-	TextureInfo normalInfo{ {0x80, 0x80, 0xff}, 1, 1 };
+	TextureInfo normalInfo{ {0x80, 0x80, 0xff, 0x00}, 1, 1 };
 	TextureInfo metallicRoughInfo{};
 	TextureInfo aoInfo{};
 	TextureInfo emissiveInfo{};
