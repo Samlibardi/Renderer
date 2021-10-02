@@ -1,9 +1,11 @@
 #version 450
+#extension GL_KHR_vulkan_glsl: enable
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
-layout(location = 2) in vec3 color;
-layout(location = 3) in vec2 uv;
+layout(location = 2) in vec3 tangent;
+layout(location = 3) in vec3 bitangent;
+layout(location = 4) in vec2 uv;
 
 layout(location = 0) out vec4 outColor;
 
@@ -13,7 +15,16 @@ layout(push_constant) uniform constants {
     vec4 cameraPos;
 };
 
-layout(binding=0) uniform sampler2D texSampler;
+layout(set=1, binding=0) uniform materialInfo {
+  vec4 baseColorFactor;
+  vec4 emissiveFactor;
+  float normalScale;
+  float metallicFactor;
+  float roughnessFactor;
+  float aoFactor;
+};
+layout(set=1, binding=1) uniform sampler2D albedoSampler;
+
 
 struct PointLight {
   vec3 position;
@@ -28,7 +39,7 @@ void main() {
     vec3 N = normalize(normal);
     vec3 V = normalize(vec3(cameraPos) - position);
 
-    vec3 albedo =  texture(texSampler, uv).rgb;
+    vec3 albedo =  texture(albedoSampler, uv).rgb;
 
     vec3 Lo = vec3(0.0f);
     

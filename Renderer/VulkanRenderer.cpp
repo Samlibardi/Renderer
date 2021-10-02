@@ -255,7 +255,7 @@ void VulkanRenderer::renderLoop() {
 		glm::mat4 model = glm::translate(glm::vec3{0.0f, -1.0f, 0.0f}) * glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0)) *glm::scale(glm::vec3(1.5f));
 		std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
 		float roughness = 0.5f + glm::cos(0.33f * runningTime) / 2.0f;
-		std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f), {1.0f, roughness, 1.0f, 0.0f } };
+		std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
 		cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment , 0, pushConstantsMat);
 		cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4)*2, pushConstantsVec);
 
@@ -434,7 +434,7 @@ void VulkanRenderer::createPipeline() {
 	vk::PipelineDynamicStateCreateInfo dynamicStateInfo{{}, dynamicStates};
 
 
-	std::vector<vk::PushConstantRange> pushConstantRanges = { vk::PushConstantRange{ vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, sizeof(glm::mat4) * 2 + sizeof(glm::vec4) * 2 }, };
+	std::vector<vk::PushConstantRange> pushConstantRanges = { vk::PushConstantRange{ vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, sizeof(glm::mat4) * 2 + sizeof(glm::vec4) * 1 }, };
 
 	std::vector<vk::DescriptorSetLayoutBinding> pbrSetBindings = {
 		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},

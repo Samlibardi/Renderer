@@ -15,7 +15,6 @@ layout(push_constant) uniform constants {
     mat4 modelViewProj;
     mat4 model;
     vec4 cameraPos;
-    vec4 materialParams;
 };
 
 void main() {
