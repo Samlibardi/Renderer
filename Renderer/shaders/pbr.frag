@@ -92,7 +92,7 @@ void main()
     //envmap specular
     const float NdotV = max(dot(N, V), 0.001);
     vec3 envSpecular = textureLod(envSpecSampler, Rv, roughness * textureQueryLevels(envSpecSampler)).rgb;
-    vec2 envBRDF = texture(brdfLUTSampler, vec2(NdotV, roughness)).rg;
+    vec2 envBRDF = textureLod(brdfLUTSampler, vec2(NdotV, roughness), 0).rg;
     vec3 F = fresnelSchlick(max(dot(N, V), 0.0), F0);
 
     vec3 kS = F;
