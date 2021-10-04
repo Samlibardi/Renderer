@@ -36,6 +36,9 @@
     <ClCompile Include="PointLight.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Texture.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="VulkanRenderer.h">
@@ -53,6 +56,9 @@
     <ClInclude Include="PointLight.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\basic.frag">
@@ -68,6 +74,15 @@
       <Filter>Source Files</Filter>
     </None>
     <None Include="shaders\env.vert">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="shaders\envbakediffuse.frag">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="shaders\envbakespecular.frag">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="shaders\envbake.vert">
       <Filter>Source Files</Filter>
     </None>
   </ItemGroup>

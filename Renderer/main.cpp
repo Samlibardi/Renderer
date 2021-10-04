@@ -1,5 +1,7 @@
 #define NOMINMAX
 
+#include <filesystem>
+
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
 #include "VulkanRenderer.h"
@@ -8,12 +10,15 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
+#define TINYGLTF_NO_EXTERNAL_IMAGE
 #include <tiny_gltf.h>
 
 #include <glm/trigonometric.hpp>
 #include <glm/geometric.hpp>
 
 #include "Mesh.h"
+
+VulkanRenderer* renderer = nullptr;
 
 template<uint32_t N> std::vector<glm::vec<N, float>> readAttribute(const tinygltf::Model& model, const tinygltf::Primitive& primitive, const char* attributeName) {
 	const auto& accessor = model.accessors[primitive.attributes.at(attributeName)];
@@ -43,10 +48,12 @@ TextureInfo loadTexture(const char* path) {
 	return TextureInfo{ data, static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
 }
 
-int main(size_t argc, char** argv) {
+void openGltf(const std::string& filename) {
+	auto path = std::filesystem::path(filename).remove_filename();
+
 	tinygltf::TinyGLTF gltfLoader;
 	tinygltf::Model gltfModel;
-	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, "C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\EnvironmentTest\\glTF\\EnvironmentTest.gltf");
+	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, filename);
 
 	Mesh loadedMesh;
 	bool meshHasTangents = false;
@@ -123,53 +130,48 @@ int main(size_t argc, char** argv) {
 		}
 	}
 
-	VulkanRenderer renderer;
-	std::vector<PointLight> lights{ {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}} };
-	for (int i = 0; i < 0; i++) {
-		const float angle = glm::radians(360.0f) / 16 * i;
-		const float radius = 10.0f;
-		lights.push_back(PointLight{ {radius * glm::sin(angle), 10.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
-	}
-	renderer.setLights(lights);
-	
-	
-	TextureInfo albedoInfo{};
-	TextureInfo normalInfo{ {0x80, 0x80, 0xff, 0x00}, 1, 1 };
-	TextureInfo metallicRoughInfo{};
-	TextureInfo aoInfo{};
-	TextureInfo emissiveInfo{};
+	Texture albedo{};
+	Texture normal{std::vector<byte>{0x80, 0x80, 0xff, 0x00}, 1, 1, 1 };
+	Texture metallicRoughness{};
+	Texture ao{};
+	Texture emissive{};
 
 	tinygltf::Material& material = gltfModel.materials[0];
 	if (material.pbrMetallicRoughness.baseColorTexture.index != -1) {
-		tinygltf::Image& image = gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source];
-		albedoInfo = TextureInfo{ image.image, static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height) };
+		albedo = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].uri).string());
 	}
 	if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1) {
-		tinygltf::Image& image = gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.metallicRoughnessTexture.index].source];
-		metallicRoughInfo = TextureInfo{ image.image, static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height) };
+		metallicRoughness = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.metallicRoughnessTexture.index].source].uri).string());
 	}
 	if (material.normalTexture.index != -1) {
-		tinygltf::Image& image = gltfModel.images[gltfModel.textures[material.normalTexture.index].source];
-		normalInfo = TextureInfo{ image.image, static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height) };
+		normal = Texture((path / gltfModel.images[gltfModel.textures[material.normalTexture.index].source].uri).string());
 	}
 	if (material.emissiveTexture.index != -1) {
-		tinygltf::Image& image = gltfModel.images[gltfModel.textures[material.emissiveTexture.index].source];
-		emissiveInfo = TextureInfo{ image.image, static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height) };
+		emissive = Texture((path / gltfModel.images[gltfModel.textures[material.emissiveTexture.index].source].uri).string());
 	}
 	if (material.occlusionTexture.index != -1) {
-		tinygltf::Image& image = gltfModel.images[gltfModel.textures[material.occlusionTexture.index].source];
-		aoInfo = TextureInfo{ image.image, static_cast<uint32_t>(image.width), static_cast<uint32_t>(image.height) };
+		ao = Texture((path / gltfModel.images[gltfModel.textures[material.occlusionTexture.index].source].uri).string());
 	}
-	
-	renderer.setTextures(albedoInfo, normalInfo, metallicRoughInfo, aoInfo, emissiveInfo);
+
+	renderer->setTextures(albedo, normal, metallicRoughness, ao, emissive);
 
 	auto& bcf = material.pbrMetallicRoughness.baseColorFactor;
 	auto& ef = material.emissiveFactor;
-	renderer.setPBRParameters(PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) });
+	renderer->setPBRParameters(PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) });
 
-	if(!meshHasTangents)
+	if (!meshHasTangents)
 		loadedMesh.calculateTangents();
-	renderer.setMesh(loadedMesh);
+	renderer->setMesh(loadedMesh);
+}
+
+int main(size_t argc, char** argv) {
+
+	vkfw::init();
+
+	vkfw::Window window = vkfw::createWindow(1920, 900, "Hello Vulkan", {}, {});
+	window.set<vkfw::Attribute::eResizable>(false);
+
+	renderer = new VulkanRenderer(window);
 
 	std::array<TextureInfo, 6> cubeFaces = {
 		loadTexture("./environment/px.png"),
@@ -179,7 +181,30 @@ int main(size_t argc, char** argv) {
 		loadTexture("./environment/pz.png"),
 		loadTexture("./environment/nz.png"),
 	};
-	renderer.setEnvironmentMap(cubeFaces);
+	renderer->setEnvironmentMap(cubeFaces);
 
-	renderer.run();
+	std::vector<PointLight> lights{ {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}} };
+	for (int i = 0; i < 8; i++) {
+		const float angle = glm::radians(360.0f) / 8 * i;
+		const float radius = 10.0f;
+		lights.push_back(PointLight{ {radius * glm::sin(angle), 10.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
+	}
+	renderer->setLights(lights);
+
+	openGltf("C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\DamagedHelmet\\glTF\\DamagedHelmet.gltf");
+
+	renderer->start();
+
+	double runningTime = 0;
+	auto frameTime = std::chrono::high_resolution_clock::now();
+	while (!window.shouldClose()) {
+		vkfw::pollEvents();
+		std::this_thread::sleep_for(std::chrono::milliseconds(6));
+
+		auto newFrameTime = std::chrono::high_resolution_clock::now();
+		double deltaTime = std::chrono::duration<double>(newFrameTime - frameTime).count();
+		runningTime += deltaTime;
+	}
+
+	delete renderer;
 }

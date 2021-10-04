@@ -1,4 +1,5 @@
 #include <thread>
+#include <shared_mutex>
 #include <tuple>
 #include <array>
 
@@ -12,6 +13,7 @@
 
 #include "Mesh.h"
 #include "PointLight.h"
+#include "Texture.h"
 
 typedef struct TextureInfo {
 	std::vector<byte> data = {0xff, 0xff, 0xff, 0xff};
@@ -32,12 +34,12 @@ typedef struct {
 class VulkanRenderer
 {
 public:
-	VulkanRenderer();
+	VulkanRenderer(vkfw::Window window);
 	~VulkanRenderer();
-	void run();
+	void start();
 
 	void setMesh(Mesh & mesh);
-	void setTextures(TextureInfo albedo, TextureInfo normal, TextureInfo metallicRoughness, TextureInfo ao, TextureInfo emissive);
+	void setTextures(Texture albedo, Texture normal, Texture metallicRoughness, Texture ao, Texture emissive);
 	void setEnvironmentMap(std::array<TextureInfo, 6> faces);
 	void setLights(std::vector<PointLight> lights);
 	void setPBRParameters(PBRInfo parameters);
@@ -90,11 +92,24 @@ private:
 
 	vk::Pipeline envPipeline;
 	vk::PipelineLayout envPipelineLayout;
+
 	vk::Image envMapImage;
 	vk::ImageView envMapImageView;
 	vma::Allocation envMapAllocation;
 
-	std::vector<std::tuple<vk::Image, vk::ImageView, vma::Allocation>> textures;
+	uint32_t envMapDiffuseResolution = 1024;
+	vk::Image envMapDiffuseImage;
+	vk::ImageView envMapDiffuseImageView;
+	vma::Allocation envMapDiffuseAllocation;
+
+	uint32_t envMapSpecularResolution = 1024;
+	vk::Image envMapSpecularImage;
+	vk::ImageView envMapSpecularImageView;
+	vma::Allocation envMapSpecularAllocation;
+
+	Texture BRDFLutTexture;
+
+	std::vector<Texture> textures;
 	vk::Sampler textureSampler;
 
 	std::vector<vk::ShaderModule> shaderModules{};
@@ -104,6 +119,8 @@ private:
 	std::vector<vk::Fence> frameFences;
 
 	std::thread renderThread;
+
+	std::shared_mutex vertexBufferMutex;
 	
 	Mesh mesh;
 	
@@ -115,6 +132,12 @@ private:
 	void createVertexBuffer();
 	void destroyVertexBuffer();
 	void createEnvPipeline();
+	void makeDiffuseEnvMap();
+	std::tuple<vk::Pipeline, vk::PipelineLayout> createEnvMapDiffuseBakePipeline(vk::RenderPass renderPass);
+	std::tuple<vk::RenderPass, std::array<vk::ImageView, 6>, std::array<vk::Framebuffer, 6>> createEnvMapDiffuseBakeRenderPass();
+	void makeSpecularEnvMap();
+	std::tuple<vk::Pipeline, vk::PipelineLayout> createEnvMapSpecularBakePipeline(vk::RenderPass renderPass);
+	std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::array<std::array<vk::Framebuffer, 10>, 6>> createEnvMapSpecularBakeRenderPass();
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 	void stageTexture(vk::Image image, TextureInfo& textureInfo);
