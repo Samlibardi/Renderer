@@ -5,8 +5,6 @@
 
 #include "VulkanRenderer.h"
 
-#include <glm/mat4x4.hpp>
-#include <glm/gtx/transform.hpp>
 #include <glm/gtx/normal.hpp>
 
 #include "Vertex.h"
@@ -560,6 +558,9 @@ void VulkanRenderer::renderLoop() {
 	size_t frameIndex = 0;
 	auto frameTime = std::chrono::high_resolution_clock::now();
 	double runningTime = 0;
+
+	glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::perspective(glm::radians(35.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.1f, 1000.0f);
+
 	while (this->running) {
 		auto newFrameTime = std::chrono::high_resolution_clock::now();
 		double deltaTime = std::chrono::duration<double>(newFrameTime - frameTime).count();
@@ -579,14 +580,12 @@ void VulkanRenderer::renderLoop() {
 		cb.bindVertexBuffers(0, this->vertexBuffer, { 0 });
 		if(this->mesh.isIndexed)
 			cb.bindIndexBuffer(this->indexBuffer, 0, vk::IndexType::eUint32);
-		glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) *  glm::perspective(glm::radians(35.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.1f, 1000.0f);
-		glm::vec3 cameraPos{ 0.0f + 6.0f * glm::sin(0.0f * runningTime), 0.5f, 8.0f };
-		glm::mat4 viewNoTrans = glm::rotate<float>(0.0f * runningTime, glm::vec3(0.0, 1.0, 0.0)); // *glm::lookAt(cameraPos, glm::vec3{ 0.0f, 0.0f, 0.0f }, glm::vec3{ 0.0f, 1.0f, 0.0f });
-		glm::mat4 view = viewNoTrans * glm::translate(-cameraPos);
+		
+		auto [cameraPos, view] = this->_camera.positionAndMatrix();
 		glm::mat4 model = glm::translate(glm::vec3{ 0.0f, 0.0f, 0.0f }) * glm::rotate<float>(1.0f * runningTime, glm::vec3(0.0, 1.0, 0.0)) * glm::rotate<float>(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));// *glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0))* glm::scale(glm::vec3(1.0f));
 		std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
-		float roughness = 0.5f + glm::cos(0.33f * runningTime) / 2.0f;
 		std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
+
 		cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment , 0, pushConstantsMat);
 		cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4)*2, pushConstantsVec);
 
@@ -597,6 +596,8 @@ void VulkanRenderer::renderLoop() {
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, this->descriptorSets[0], {});
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->envPipeline);
+		glm::mat4 viewNoTrans = view;
+		viewNoTrans[3] = glm::vec4(glm::vec3(0.0f), 1.0f);
 		pushConstantsMat = { glm::inverse(proj * viewNoTrans) };
 		cb.pushConstants<glm::mat4x4>(this->envPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
 		cb.draw(6, 1, 0, 0);

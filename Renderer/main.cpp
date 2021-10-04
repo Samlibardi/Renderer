@@ -195,15 +195,85 @@ int main(size_t argc, char** argv) {
 
 	renderer->start();
 
-	double runningTime = 0;
+	double runningTime = 0.0;
 	auto frameTime = std::chrono::high_resolution_clock::now();
+	double deltaTime = 0.0;
+
+	const float moveSpeed = 2.5f;
+	const float panSpeed = 5.0f / std::min(window.getHeight(), window.getWidth());
+	const float tiltSpeed = 0.001f;
+
+	std::map<vkfw::Key, boolean> pressedKeys{ {vkfw::Key::eW, false}, {vkfw::Key::eA, false}, {vkfw::Key::eS, false}, {vkfw::Key::eD, false}, };
+	std::map<vkfw::MouseButton, boolean> pressedMouseButtons{ {vkfw::MouseButton::eLeft, false}, {vkfw::MouseButton::eMiddle, false}, {vkfw::MouseButton::eRight, false} };
+
+	window.callbacks()->on_key = [&pressedKeys](vkfw::Window const&, vkfw::Key key, int32_t, vkfw::KeyAction action, vkfw::ModifierKeyFlags) {
+		if (action == vkfw::KeyAction::ePress) {
+			pressedKeys[key] = true;
+		}
+		if (action == vkfw::KeyAction::eRelease) {
+			pressedKeys[key] = false;
+		}
+	};
+
+	glm::vec2 lastCursorPos{ 0.0f, 0.0f };
+
+	window.callbacks()->on_mouse_button = [&pressedMouseButtons, &lastCursorPos](vkfw::Window const& window, vkfw::MouseButton button, vkfw::MouseButtonAction action, vkfw::ModifierKeyFlags modifiers) {
+		if (action == vkfw::MouseButtonAction::ePress) {
+			pressedMouseButtons[button] = true;
+			lastCursorPos = { window.getCursorPosX(), window.getCursorPosY() };
+		}
+		if (action == vkfw::MouseButtonAction::eRelease) {
+			pressedMouseButtons[button] = false;
+		}
+	};
+	
+	window.callbacks()->on_scroll = [](vkfw::Window const&, double, double scrollY) {
+		renderer->camera().dolly(scrollY);
+	};
+
 	while (!window.shouldClose()) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		vkfw::pollEvents();
-		std::this_thread::sleep_for(std::chrono::milliseconds(6));
 
 		auto newFrameTime = std::chrono::high_resolution_clock::now();
-		double deltaTime = std::chrono::duration<double>(newFrameTime - frameTime).count();
+		deltaTime = std::chrono::duration<double>(newFrameTime - frameTime).count();
 		runningTime += deltaTime;
+		frameTime = newFrameTime;
+
+		if (pressedMouseButtons[vkfw::MouseButton::eRight]) {
+			glm::vec2 cursorPos = { window.getCursorPosX(), window.getCursorPosY() };
+			auto cursorDelta = cursorPos - lastCursorPos;
+			cursorDelta.y = -cursorDelta.y;
+			lastCursorPos = cursorPos;
+			
+			renderer->camera().pan(-panSpeed * cursorDelta);
+		}
+		else {
+			glm::vec3 translation{ 0.0f };
+			if (pressedKeys[vkfw::Key::eD])
+				translation += glm::vec3(0.0f, 0.0f, -1.0f);
+			if (pressedKeys[vkfw::Key::eA])
+				translation += glm::vec3(-1.0f, 0.0f, 0.0f);
+			if (pressedKeys[vkfw::Key::eS])
+				translation += glm::vec3(0.0f, 0.0f, 1.0f);
+			if (pressedKeys[vkfw::Key::eD])
+				translation += glm::vec3(1.0f, 0.0f, 0.0f);
+
+			float translationMag = glm::length(translation);
+
+			if (translationMag > 0.0f)
+				renderer->camera().move(static_cast<float>(moveSpeed * deltaTime) * translation / std::min(translationMag, 1.0f));
+		}
+
+		if (pressedMouseButtons[vkfw::MouseButton::eMiddle]) {
+			glm::vec2 cursorPos = { window.getCursorPosX(), window.getCursorPosY() };
+			auto cursorDelta = cursorPos - lastCursorPos;
+			lastCursorPos = cursorPos;
+
+			renderer->camera().tilt(-tiltSpeed * cursorDelta);
+		}
+
+
 	}
 
 	delete renderer;

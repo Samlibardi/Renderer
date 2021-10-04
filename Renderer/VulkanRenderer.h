@@ -8,12 +8,15 @@
 #include <vkfw/vkfw.hpp>
 
 #include <glm/vec4.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/gtx/transform.hpp>
 
 #include <vk_mem_alloc.hpp>
 
 #include "Mesh.h"
 #include "PointLight.h"
 #include "Texture.h"
+#include "Camera.h"
 
 typedef struct TextureInfo {
 	std::vector<byte> data = {0xff, 0xff, 0xff, 0xff};
@@ -44,9 +47,13 @@ public:
 	void setLights(std::vector<PointLight> lights);
 	void setPBRParameters(PBRInfo parameters);
 
+	Camera& camera() { return this->_camera; };
+
 private:
 	bool running = false;
 	
+	Camera _camera{ { 0.0f, 0.5f, 8.0f }, {0.0f, 0.0f, 0.0f} };
+
 	vkfw::Window window;
 	vk::Instance vulkanInstance;
 	vk::SurfaceKHR surface;
