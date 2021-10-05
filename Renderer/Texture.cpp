@@ -15,21 +15,23 @@ TextureCore::~TextureCore() {
 	}
 }
 
-Texture::Texture(const std::string& path) : path(path) {
+Texture::Texture(const std::string& path, vk::Format format) : path(path) {
 	if(Texture::textureCache.count(path)){
 		this->core = Texture::textureCache[path];
+		this->core->_imageFormat = format;
 		return;
 	}
 	else {
 		this->core = std::shared_ptr<TextureCore>(new TextureCore());
 		this->core->path = path;
+		this->core->_imageFormat = format;
 		Texture::textureCache[path] = this->core;
 		return;
 	}
 }
 
 Texture::Texture() : Texture("./textures/clear.png") {}
-Texture::Texture(const std::string& path, const uint32_t maxMipLevels) : Texture(path) {
+Texture::Texture(const std::string& path, const uint32_t maxMipLevels, vk::Format format) : Texture(path, format) {
 	this->core->maxMipLevels = maxMipLevels;
 }
 
@@ -78,9 +80,11 @@ void Texture::loadToDevice(const vk::Device device, const vma::Allocator allocat
 
 	mipLevels = std::min(mipLevels, this->core->maxMipLevels);
 
-	this->core->_imageFormat = vk::Format::eR8G8B8A8Unorm;
-	if (this->core->bytesPerChannel == 4u)
-		this->core->_imageFormat = vk::Format::eR32G32B32A32Sfloat;
+	if (this->core->_imageFormat == vk::Format::eUndefined) {
+		this->core->_imageFormat = vk::Format::eR8G8B8A8Unorm;
+		if (this->core->bytesPerChannel == 4u)
+			this->core->_imageFormat = vk::Format::eR32G32B32A32Sfloat;
+	}
 
 	std::tie(this->core->_image, this->core->_imageAllocation) = allocator.createImage(
 		vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->core->_imageFormat, vk::Extent3D{this->core->width, this->core->height, 1}, mipLevels, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },

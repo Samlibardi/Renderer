@@ -142,7 +142,7 @@ void openGltf(const std::string& filename) {
 				if (primitive.material > -1) {
 					tinygltf::Material& material = gltfModel.materials[primitive.material];
 					if (material.pbrMetallicRoughness.baseColorTexture.index != -1) {
-						loadedMesh.albedoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].uri).string());
+						loadedMesh.albedoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].uri).string(), vk::Format::eR8G8B8A8Srgb);
 					}
 
 					if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1) {

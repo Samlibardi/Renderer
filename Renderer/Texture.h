@@ -28,7 +28,7 @@ private:
 	vk::Device device{};
 	vma::Allocator allocator{};
 	vk::Image _image{};
-	vk::Format _imageFormat = vk::Format::eR8G8B8A8Unorm;
+	vk::Format _imageFormat = vk::Format::eUndefined;
 	vk::ImageView _imageView{};
 	vma::Allocation _imageAllocation{};
 
@@ -42,8 +42,8 @@ public:
 	Texture();
 	Texture(const Texture& rhs) : path(rhs.path), core(rhs.core) {};
 	//Texture(Texture&& rhs) noexcept;
-	Texture(const std::string& path);
-	Texture(const std::string& path, uint32_t maxMipLevels);
+	Texture(const std::string& path, vk::Format format = vk::Format::eUndefined);
+	Texture(const std::string& path, uint32_t maxMipLevels, vk::Format format = vk::Format::eUndefined);
 
 	void loadFromFile();
 	void loadToDevice(const vk::Device device, const vma::Allocator allocator, const vk::Queue transferQueue, const vk::CommandPool commandPool);
