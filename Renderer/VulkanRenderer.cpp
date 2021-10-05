@@ -152,7 +152,7 @@ void VulkanRenderer::stageTexture(vk::Image image, TextureInfo& textureInfo) {
 	this->device.destroyFence(fence);
 }
 
-void VulkanRenderer::setEnvironmentMap(std::array<TextureInfo, 6> textureInfos) {
+void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos) {
 	std::tie(this->envMapImage, this->envMapAllocation) = this->allocator.createImage(
 		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Unorm, vk::Extent3D{textureInfos[0].width, textureInfos[0].height, 1}, 1, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
@@ -610,9 +610,9 @@ void VulkanRenderer::renderLoop() {
 			cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4) * 2, pushConstantsVec);
 
 			if (mesh.isIndexed)
-				cb.drawIndexed(mesh.indices.size(), 1, 0, 0, 0);
+				cb.drawIndexed(mesh.indices.size(), 1, mesh.firstIndex, 0, 0);
 			else
-				cb.draw(mesh.vertices.size(), 1, 0, 0);
+				cb.draw(mesh.vertices.size(), 1, mesh.firstVertex, 0);
 		}
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, this->globalDescriptorSet, {});
@@ -835,18 +835,23 @@ void VulkanRenderer::createVertexBuffer() {
 
 	unsigned char* stagingData = reinterpret_cast<unsigned char*>(this->allocator.mapMemory(SBAllocation));
 	size_t vbOffset = 0, ibOffset = 0;
-	uint32_t vertexCount = 0;
+	size_t vertexCount = 0, indexCount = 0;
 	for (Mesh& mesh : this->meshes) {
 		size_t len = mesh.vertices.size() * sizeof(Vertex);
 		memcpy(stagingData + vbOffset, mesh.vertices.data(), len);
 		vbOffset += len;
 
-		len = mesh.indices.size() * sizeof(uint32_t);
-		for (auto [i, index] : iter::enumerate(mesh.indices)) {
-			*(reinterpret_cast<uint32_t*>(stagingData + vertexBufferSize + ibOffset) + i) = index + vertexCount;
+		if (mesh.isIndexed) {
+			len = mesh.indices.size() * sizeof(uint32_t);
+			for (auto [i, index] : iter::enumerate(mesh.indices)) {
+				*(reinterpret_cast<uint32_t*>(stagingData + vertexBufferSize + ibOffset) + i) = index + vertexCount;
+			}
+			ibOffset += len;
 		}
-		ibOffset += len;
 		
+		mesh.firstIndex = indexCount;
+		mesh.firstVertex = vertexCount;
+		indexCount += mesh.indices.size();
 		vertexCount += mesh.vertices.size();
 	}
 	this->allocator.unmapMemory(SBAllocation);

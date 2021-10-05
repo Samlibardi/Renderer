@@ -33,8 +33,7 @@ public:
 	void start();
 
 	void setMeshes(const std::vector<Mesh>);
-	void setTextures(Texture albedo, Texture normal, Texture metallicRoughness, Texture ao, Texture emissive);
-	void setEnvironmentMap(std::array<TextureInfo, 6> faces);
+	void setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos);
 	void setLights(std::vector<PointLight> lights);
 
 	Camera& camera() { return this->_camera; };

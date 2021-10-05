@@ -60,120 +60,120 @@ void openGltf(const std::string& filename) {
 	
 	for (auto& node : gltfModel.nodes) {
 		if (node.mesh > -1) {
-			Mesh loadedMesh;
-			bool meshHasTangents = false;
-
-			if (!node.translation.empty()) {
-				loadedMesh.translation = glm::vec3{ node.translation[0], node.translation[1], node.translation[2] };
-			}
-			if (!node.rotation.empty()) {
-				loadedMesh.rotation = glm::vec3{ node.rotation[0], node.rotation[1], node.rotation[2] };
-			}
-			if (!node.scale.empty()) {
-				loadedMesh.scale = glm::vec3{ node.scale[0], node.scale[1], node.scale[2] };
-			}
-
 			const auto& mesh = gltfModel.meshes[node.mesh];
-			const auto& primitive = mesh.primitives[0];
+			for (auto& primitive : mesh.primitives) {
+				Mesh loadedMesh{};
+				bool meshHasTangents = false;
 
-			std::vector<glm::vec3> positions = readAttribute<3>(gltfModel, primitive, "POSITION");
-			loadedMesh.vertices.reserve(positions.size());
-			for (glm::vec3& p : positions)
-				loadedMesh.vertices.push_back(Vertex{ p });
-
-			if (primitive.attributes.count("NORMAL")) {
-				std::vector<glm::vec3> normals = readAttribute<3>(gltfModel, primitive, "NORMAL");
-				for (size_t i = 0; i < loadedMesh.vertices.size(); i++)
-					loadedMesh.vertices[i].normal = normals[i];
-			}
-
-			if (primitive.attributes.count("TEXCOORD_0")) {
-				std::vector<glm::vec2> uvs = readAttribute<2>(gltfModel, primitive, "TEXCOORD_0");
-				for (size_t i = 0; i < loadedMesh.vertices.size(); i++)
-					loadedMesh.vertices[i].uv = uvs[i];
-			}
-
-			if (primitive.attributes.count("TANGENT")) {
-				meshHasTangents = true;
-				std::vector<glm::vec4> tangents = readAttribute<4>(gltfModel, primitive, "TANGENT");
-				for (size_t i = 0; i < loadedMesh.vertices.size(); i++) {
-					loadedMesh.vertices[i].tangent = glm::vec3{ tangents[i].x, tangents[i].y, tangents[i].z };
-					loadedMesh.vertices[i].bitangent = glm::cross(loadedMesh.vertices[i].normal, loadedMesh.vertices[i].tangent) * tangents[i].w;
+				if (!node.translation.empty()) {
+					loadedMesh.translation = glm::vec3{ node.translation[0], node.translation[1], node.translation[2] };
 				}
-			}
+				if (!node.rotation.empty()) {
+					loadedMesh.rotation = glm::vec3{ node.rotation[0], node.rotation[1], node.rotation[2] };
+				}
+				if (!node.scale.empty()) {
+					loadedMesh.scale = glm::vec3{ node.scale[0], node.scale[1], node.scale[2] };
+				}
 
-			if (primitive.indices > -1) {
-				loadedMesh.isIndexed = true;
+				std::vector<glm::vec3> positions = readAttribute<3>(gltfModel, primitive, "POSITION");
+				loadedMesh.vertices.reserve(positions.size());
+				for (glm::vec3& p : positions)
+					loadedMesh.vertices.push_back(Vertex{ p });
 
-				const auto& indicesAccessor = gltfModel.accessors[mesh.primitives[0].indices];
-				const auto& indicesBufferView = gltfModel.bufferViews[indicesAccessor.bufferView];
-				const auto& indicesBuffer = gltfModel.buffers[indicesBufferView.buffer];
+				if (primitive.attributes.count("NORMAL")) {
+					std::vector<glm::vec3> normals = readAttribute<3>(gltfModel, primitive, "NORMAL");
+					for (size_t i = 0; i < loadedMesh.vertices.size(); i++)
+						loadedMesh.vertices[i].normal = normals[i];
+				}
 
-				loadedMesh.indices.reserve(indicesAccessor.count);
-				for (size_t i = 0; i < indicesAccessor.count; i++) {
-					uint32_t index;
-					const byte* p = &indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset];
-					switch (indicesAccessor.componentType) {
-					case TINYGLTF_COMPONENT_TYPE_BYTE:
-						index = reinterpret_cast<const int8_t*>(p)[i];
-						break;
-					case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
-						index = reinterpret_cast<const uint8_t*>(p)[i];
-						break;
-					case TINYGLTF_COMPONENT_TYPE_SHORT:
-						index = reinterpret_cast<const int16_t*>(p)[i];
-						break;
-					case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
-						index = reinterpret_cast<const uint16_t*>(p)[i];
-						break;
-					case TINYGLTF_COMPONENT_TYPE_INT:
-						index = reinterpret_cast<const int32_t*>(p)[i];
-						break;
-					case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
-						index = reinterpret_cast<const uint32_t*>(p)[i];
-						break;
+				if (primitive.attributes.count("TEXCOORD_0")) {
+					std::vector<glm::vec2> uvs = readAttribute<2>(gltfModel, primitive, "TEXCOORD_0");
+					for (size_t i = 0; i < loadedMesh.vertices.size(); i++)
+						loadedMesh.vertices[i].uv = uvs[i];
+				}
+
+				if (primitive.attributes.count("TANGENT")) {
+					meshHasTangents = true;
+					std::vector<glm::vec4> tangents = readAttribute<4>(gltfModel, primitive, "TANGENT");
+					for (size_t i = 0; i < loadedMesh.vertices.size(); i++) {
+						loadedMesh.vertices[i].tangent = glm::vec3{ tangents[i].x, tangents[i].y, tangents[i].z };
+						loadedMesh.vertices[i].bitangent = glm::cross(loadedMesh.vertices[i].normal, loadedMesh.vertices[i].tangent) * tangents[i].w;
 					}
-					loadedMesh.indices.push_back(index);
-				}
-			}
-			else {
-				loadedMesh.isIndexed = false;
-			}
-
-			if (primitive.material > -1) {
-				tinygltf::Material& material = gltfModel.materials[primitive.material];
-				if (material.pbrMetallicRoughness.baseColorTexture.index != -1) {
-					loadedMesh.albedoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].uri).string());
 				}
 
-				if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1) {
-					loadedMesh.metalRoughnessTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.metallicRoughnessTexture.index].source].uri).string());
-				}
+				if (primitive.indices > -1) {
+					loadedMesh.isIndexed = true;
 
-				if (material.normalTexture.index != -1) {
-					loadedMesh.normalTexture = Texture((path / gltfModel.images[gltfModel.textures[material.normalTexture.index].source].uri).string());
+					const auto& indicesAccessor = gltfModel.accessors[primitive.indices];
+					const auto& indicesBufferView = gltfModel.bufferViews[indicesAccessor.bufferView];
+					const auto& indicesBuffer = gltfModel.buffers[indicesBufferView.buffer];
+
+					loadedMesh.indices.reserve(indicesAccessor.count);
+					for (size_t i = 0; i < indicesAccessor.count; i++) {
+						uint32_t index;
+						const byte* p = &indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset];
+						switch (indicesAccessor.componentType) {
+						case TINYGLTF_COMPONENT_TYPE_BYTE:
+							index = reinterpret_cast<const int8_t*>(p)[i];
+							break;
+						case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+							index = reinterpret_cast<const uint8_t*>(p)[i];
+							break;
+						case TINYGLTF_COMPONENT_TYPE_SHORT:
+							index = reinterpret_cast<const int16_t*>(p)[i];
+							break;
+						case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+							index = reinterpret_cast<const uint16_t*>(p)[i];
+							break;
+						case TINYGLTF_COMPONENT_TYPE_INT:
+							index = reinterpret_cast<const int32_t*>(p)[i];
+							break;
+						case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+							index = reinterpret_cast<const uint32_t*>(p)[i];
+							break;
+						}
+						loadedMesh.indices.push_back(index);
+					}
 				}
 				else {
-					loadedMesh.normalTexture = Texture{ std::vector<byte>{0x80, 0x80, 0xff, 0x00}, 1, 1, 1 };
+					loadedMesh.isIndexed = false;
 				}
 
-				if (material.emissiveTexture.index != -1) {
-					loadedMesh.emissiveTexture = Texture((path / gltfModel.images[gltfModel.textures[material.emissiveTexture.index].source].uri).string());
+				if (primitive.material > -1) {
+					tinygltf::Material& material = gltfModel.materials[primitive.material];
+					if (material.pbrMetallicRoughness.baseColorTexture.index != -1) {
+						loadedMesh.albedoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].uri).string());
+					}
+
+					if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1) {
+						loadedMesh.metalRoughnessTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.metallicRoughnessTexture.index].source].uri).string());
+					}
+
+					if (material.normalTexture.index != -1) {
+						loadedMesh.normalTexture = Texture((path / gltfModel.images[gltfModel.textures[material.normalTexture.index].source].uri).string());
+					}
+					else {
+						loadedMesh.normalTexture = Texture("./textures/clear_normal.png");
+					}
+
+					if (material.emissiveTexture.index != -1) {
+						loadedMesh.emissiveTexture = Texture((path / gltfModel.images[gltfModel.textures[material.emissiveTexture.index].source].uri).string());
+					}
+
+					if (material.occlusionTexture.index != -1) {
+						loadedMesh.aoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.occlusionTexture.index].source].uri).string());
+					}
+
+					auto& bcf = material.pbrMetallicRoughness.baseColorFactor;
+					auto& ef = material.emissiveFactor;
+					loadedMesh.materialInfo = PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) };
 				}
 
-				if (material.occlusionTexture.index != -1) {
-					loadedMesh.aoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.occlusionTexture.index].source].uri).string());
-				}
+				if (!meshHasTangents)
+					loadedMesh.calculateTangents();
 
-				auto& bcf = material.pbrMetallicRoughness.baseColorFactor;
-				auto& ef = material.emissiveFactor;
-				loadedMesh.materialInfo = PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) };
+				loadedMeshes.push_back(loadedMesh);
 			}
-
-			if (!meshHasTangents)
-				loadedMesh.calculateTangents();
-
-			loadedMeshes.push_back(loadedMesh);
 		}
 	}
 	renderer->setMeshes(loadedMeshes);

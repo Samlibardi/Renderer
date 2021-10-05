@@ -28,6 +28,8 @@ public:
 	bool isIndexed = true;
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
+	size_t firstVertex;
+	size_t firstIndex;
 
 	Texture albedoTexture{};
 	Texture normalTexture{};
