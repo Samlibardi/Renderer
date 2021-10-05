@@ -72,19 +72,19 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\GLFW\3.3.4\include;C:\VulkanSDK\1.2.189.2\Include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\glm\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;$(IncludePath)</IncludePath>
+    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\GLFW\3.3.4\include;C:\VulkanSDK\1.2.189.2\Include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\glm\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;$(IncludePath)</IncludePath>
+    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\GLFW\3.3.4\include;C:\VulkanSDK\1.2.189.2\Include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\glm\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;$(IncludePath)</IncludePath>
+    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>C:\GLFW\3.3.4\include;C:\VulkanSDK\1.2.189.2\Include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\glm\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;$(IncludePath)</IncludePath>
+    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

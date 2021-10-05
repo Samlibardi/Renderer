@@ -595,10 +595,12 @@ void VulkanRenderer::renderLoop() {
 		cb.bindIndexBuffer(this->vertexIndexBuffer, this->indexBufferOffset, vk::IndexType::eUint32);
 		
 		auto [cameraPos, view] = this->_camera.positionAndMatrix();
-		glm::mat4 model = glm::translate(glm::vec3{ 0.0f, 0.0f, 0.0f }) * glm::rotate<float>(0.0f * runningTime, glm::vec3(0.0, 1.0, 0.0)) * glm::rotate<float>(glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));// *glm::rotate<float>(1.5f * runningTime, glm::vec3(0.0, 1.0, 0.0))* glm::scale(glm::vec3(1.0f));
-		std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
 		
 		for (Mesh& mesh : this->meshes) {
+
+			glm::mat4 model = glm::translate(mesh.translation) * glm::rotate(mesh.rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh.rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh.rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh.scale);
+			std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
+
 			std::vector descriptorSets = { this->globalDescriptorSet, mesh.descriptorSet };
 			cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelineLayout, 0, descriptorSets, {});
 			
@@ -617,7 +619,7 @@ void VulkanRenderer::renderLoop() {
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->envPipeline);
 		glm::mat4 viewNoTrans = view;
 		viewNoTrans[3] = glm::vec4(glm::vec3(0.0f), 1.0f);
-		pushConstantsMat = { glm::inverse(proj * viewNoTrans) };
+		std::vector<glm::mat4> pushConstantsMat = { glm::inverse(proj * viewNoTrans) };
 		cb.pushConstants<glm::mat4x4>(this->envPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
 		cb.draw(6, 1, 0, 0);
 
