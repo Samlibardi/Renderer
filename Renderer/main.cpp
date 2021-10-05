@@ -55,11 +55,14 @@ void openGltf(const std::string& filename) {
 	tinygltf::Model gltfModel;
 	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, filename);
 
-	Mesh loadedMesh;
-	bool meshHasTangents = false;
-
+	std::vector<Mesh> loadedMeshes{};
+	tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene];
+	
 	for (auto& node : gltfModel.nodes) {
 		if (node.mesh > -1) {
+			Mesh loadedMesh;
+			bool meshHasTangents = false;
+
 			const auto& mesh = gltfModel.meshes[node.mesh];
 			const auto& primitive = mesh.primitives[0];
 
@@ -96,7 +99,7 @@ void openGltf(const std::string& filename) {
 				const auto& indicesBufferView = gltfModel.bufferViews[indicesAccessor.bufferView];
 				const auto& indicesBuffer = gltfModel.buffers[indicesBufferView.buffer];
 
-				loadedMesh.triangleIndices.reserve(indicesAccessor.count);
+				loadedMesh.indices.reserve(indicesAccessor.count);
 				for (size_t i = 0; i < indicesAccessor.count; i++) {
 					uint32_t index;
 					const byte* p = &indicesBuffer.data[indicesBufferView.byteOffset + indicesAccessor.byteOffset];
@@ -120,48 +123,48 @@ void openGltf(const std::string& filename) {
 						index = reinterpret_cast<const uint32_t*>(p)[i];
 						break;
 					}
-					loadedMesh.triangleIndices.push_back(index);
+					loadedMesh.indices.push_back(index);
 				}
-				break;
 			}
 			else {
 				loadedMesh.isIndexed = false;
 			}
+
+			tinygltf::Material& material = gltfModel.materials[primitive.material];
+			if (material.pbrMetallicRoughness.baseColorTexture.index != -1) {
+				loadedMesh.albedoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].uri).string());
+			}
+
+			if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1) {
+				loadedMesh.metalRoughnessTexture = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.metallicRoughnessTexture.index].source].uri).string());
+			}
+
+			if (material.normalTexture.index != -1) {
+				loadedMesh.normalTexture = Texture((path / gltfModel.images[gltfModel.textures[material.normalTexture.index].source].uri).string());
+			}
+			else {
+				loadedMesh.normalTexture = Texture{ std::vector<byte>{0x80, 0x80, 0xff, 0x00}, 1, 1, 1 };
+			}
+
+			if (material.emissiveTexture.index != -1) {
+				loadedMesh.emissiveTexture = Texture((path / gltfModel.images[gltfModel.textures[material.emissiveTexture.index].source].uri).string());
+			}
+
+			if (material.occlusionTexture.index != -1) {
+				loadedMesh.aoTexture = Texture((path / gltfModel.images[gltfModel.textures[material.occlusionTexture.index].source].uri).string());
+			}
+
+			auto& bcf = material.pbrMetallicRoughness.baseColorFactor;
+			auto& ef = material.emissiveFactor;
+			loadedMesh.materialInfo = PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) };
+
+			if (!meshHasTangents)
+				loadedMesh.calculateTangents();
+
+			loadedMeshes.push_back(loadedMesh);
 		}
 	}
-
-	Texture albedo{};
-	Texture normal{std::vector<byte>{0x80, 0x80, 0xff, 0x00}, 1, 1, 1 };
-	Texture metallicRoughness{};
-	Texture ao{};
-	Texture emissive{};
-
-	tinygltf::Material& material = gltfModel.materials[0];
-	if (material.pbrMetallicRoughness.baseColorTexture.index != -1) {
-		albedo = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.baseColorTexture.index].source].uri).string());
-	}
-	if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1) {
-		metallicRoughness = Texture((path / gltfModel.images[gltfModel.textures[material.pbrMetallicRoughness.metallicRoughnessTexture.index].source].uri).string());
-	}
-	if (material.normalTexture.index != -1) {
-		normal = Texture((path / gltfModel.images[gltfModel.textures[material.normalTexture.index].source].uri).string());
-	}
-	if (material.emissiveTexture.index != -1) {
-		emissive = Texture((path / gltfModel.images[gltfModel.textures[material.emissiveTexture.index].source].uri).string());
-	}
-	if (material.occlusionTexture.index != -1) {
-		ao = Texture((path / gltfModel.images[gltfModel.textures[material.occlusionTexture.index].source].uri).string());
-	}
-
-	renderer->setTextures(albedo, normal, metallicRoughness, ao, emissive);
-
-	auto& bcf = material.pbrMetallicRoughness.baseColorFactor;
-	auto& ef = material.emissiveFactor;
-	renderer->setPBRParameters(PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) });
-
-	if (!meshHasTangents)
-		loadedMesh.calculateTangents();
-	renderer->setMesh(loadedMesh);
+	renderer->setMeshes(loadedMeshes);
 }
 
 int main(size_t argc, char** argv) {
@@ -191,7 +194,7 @@ int main(size_t argc, char** argv) {
 	}
 	renderer->setLights(lights);
 
-	openGltf("C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\DamagedHelmet\\glTF\\DamagedHelmet.gltf");
+	openGltf("C:\\Users\\samli\\source\\glTF-Sample-Models-master\\2.0\\MetalRoughSpheres\\glTF\\MetalRoughSpheres.gltf");
 
 	renderer->start();
 

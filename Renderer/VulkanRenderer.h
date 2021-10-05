@@ -24,15 +24,6 @@ typedef struct TextureInfo {
 	uint32_t height = 1;
 } TextureInfo;
 
-typedef struct {
-	glm::vec4 baseColorFactor;
-	glm::vec4 emissiveFactor;
-	float normalScale;
-	float metallicFactor;
-	float roughnessFactor;
-	float aoFactor;
-} PBRInfo;
-
 #pragma once
 class VulkanRenderer
 {
@@ -41,11 +32,10 @@ public:
 	~VulkanRenderer();
 	void start();
 
-	void setMesh(Mesh & mesh);
+	void setMeshes(const std::vector<Mesh>);
 	void setTextures(Texture albedo, Texture normal, Texture metallicRoughness, Texture ao, Texture emissive);
 	void setEnvironmentMap(std::array<TextureInfo, 6> faces);
 	void setLights(std::vector<PointLight> lights);
-	void setPBRParameters(PBRInfo parameters);
 
 	Camera& camera() { return this->_camera; };
 
@@ -84,12 +74,12 @@ private:
 	vk::DescriptorPool descriptorPool;
 	vk::DescriptorSetLayout globalDescriptorSetLayout;
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
-	std::vector<vk::DescriptorSet> descriptorSets;
+	vk::DescriptorSet globalDescriptorSet;
 
-	vk::Buffer vertexBuffer;
-	vma::Allocation vertexBufferAllocation;
-	vk::Buffer indexBuffer;
-	vma::Allocation indexBufferAllocation;
+	vk::Buffer vertexIndexBuffer;
+	vma::Allocation vertexIndexBufferAllocation;
+	size_t vertexBufferOffset;
+	size_t indexBufferOffset;
 
 	vk::Buffer lightsBuffer;
 	vk::DeviceMemory lightsBufferMemory;
@@ -129,7 +119,7 @@ private:
 
 	std::shared_mutex vertexBufferMutex;
 	
-	Mesh mesh;
+	std::vector<Mesh> meshes;
 	
 	void renderLoop();
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);

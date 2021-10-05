@@ -9,10 +9,10 @@ void Mesh::calculateTangents()
 	}
 
 	if (isIndexed) {
-		for (size_t i = 0; i < this->triangleIndices.size() - 2; i += 3) {
-			Vertex& v0 = this->vertices[this->triangleIndices[i]];
-			Vertex& v1 = this->vertices[this->triangleIndices[i+1]];
-			Vertex& v2 = this->vertices[this->triangleIndices[i+2]];
+		for (size_t i = 0; i < this->indices.size() - 2; i += 3) {
+			Vertex& v0 = this->vertices[this->indices[i]];
+			Vertex& v1 = this->vertices[this->indices[i+1]];
+			Vertex& v2 = this->vertices[this->indices[i+2]];
 
 			glm::vec3& p0 = v0.pos;
 			glm::vec3& p1 = v1.pos;
