@@ -15,7 +15,7 @@ void main() {
     vec3 right = normalize(cross(up, normal));
     up = normalize(cross(normal, right));
 
-    const int nSamples = 128;
+    const int nSamples = 64;
     float stepRads = 2 * PI / nSamples;
 
     vec3 irradiance = vec3(0.0f);

@@ -36,8 +36,8 @@ template<uint32_t N> std::vector<glm::vec<N, float>> readAttribute(const tinyglt
 
 TextureInfo loadTexture(const char* path) {
 	int w, h, n;
-	byte* d = stbi_load(path, &w, &h, &n, 0);
-	size_t len = static_cast<size_t>(w) * h * n;
+	float* d = stbi_loadf(path, &w, &h, &n, 4);
+	size_t len = sizeof(float) * w * h * 4;
 
 	std::vector<byte> data;
 	data.resize(len);

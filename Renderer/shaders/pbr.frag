@@ -53,7 +53,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0);
 
 void main()
 {	
-    vec3 albedo = (texture(albedoSampler, uv) * baseColorFactor).rgb;
+    vec4 albedo = (texture(albedoSampler, uv) * baseColorFactor);
     vec4 metalRoughMap = texture(metalRoughSampler, uv) * vec4(0.0f, roughnessFactor, metallicFactor, 0.0f);
     float metallic = clamp(metalRoughMap.b, 0.0f, 1.0f);
     float roughness = clamp(metalRoughMap.g, 0.05f, 1.0f);
@@ -71,7 +71,7 @@ void main()
     vec3 Rv = reflect(-V, N);
 
     vec3 F0 = vec3(0.04); 
-    F0 = mix(F0, albedo, metallic);
+    F0 = mix(F0, albedo.rgb, metallic);
 	           
     // reflectance equation
     vec3 Lo = vec3(0.0);
@@ -86,7 +86,7 @@ void main()
         float attenuation = 1.0 / (d*d);
         vec3 radiance = lightIntensity * attenuation;
         
-        Lo += BRDF(radiance, L, N, V, albedo, roughness, metallic, F0);
+        Lo += BRDF(radiance, L, N, V, albedo.rgb, roughness, metallic, F0);
     }
     
     //envmap specular
@@ -100,7 +100,7 @@ void main()
     kD *= 1.0 - metallic;	
 
     envSpecular = envSpecular * (kS * envBRDF.r + envBRDF.y);
-    vec3 envDiffuse = kD * texture(envDiffuseSampler, N).rgb * albedo;
+    vec3 envDiffuse = kD * texture(envDiffuseSampler, N).rgb * albedo.rgb;
 
     vec3 ambient = (envDiffuse + envSpecular) * ao;
     vec3 color = ambient + Lo + emissive;
@@ -108,7 +108,7 @@ void main()
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(1.0/2.2));
    
-    outColor = vec4(color, 1.0);
+    outColor = vec4(color, albedo.a);
 }
 
 vec3 BRDF(vec3 radiance, vec3 L, vec3 N,  vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0) {

@@ -5,8 +5,13 @@ layout(location=0) in vec3 position;
 
 layout(set=0, binding=1) uniform samplerCube envSampler;
 
-layout(location=0) out vec3 outColor;
+layout(location=0) out vec4 outColor;
 
 void main() {
-    outColor = texture(envSampler, normalize(position)).rgb;
+    vec3 color = texture(envSampler, normalize(position)).rgb;
+
+    color = color / (color + vec3(1.0));
+    color = pow(color, vec3(1.0/2.2));
+   
+    outColor = vec4(color, 1.0);
 }

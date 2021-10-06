@@ -61,7 +61,7 @@ void main() {
     const vec3 R = normal;
     const vec3 V = normal;
 
-    const int nSamples = 4096;
+    const int nSamples = 1024;
     float stepRads = 2 * PI / nSamples;
 
     vec3 color = vec3(0.0f);
