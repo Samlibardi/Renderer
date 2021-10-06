@@ -658,18 +658,13 @@ void VulkanRenderer::renderLoop() {
 		glm::mat4 view;
 		std::tie(cameraPos, view) = this->_camera.positionAndMatrix();
 		
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->opaquePipeline);
-		std::sort(this->opaqueMeshes.begin(), this->opaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }); //sort front-to-back
-		for (auto& mesh : this->opaqueMeshes) {
-			this->drawMesh(cb, *mesh, proj, view, cameraPos);
+		if (!this->opaqueMeshes.empty()) {
+			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->opaquePipeline);
+			std::sort(this->opaqueMeshes.begin(), this->opaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }); //sort front-to-back
+			for (auto& mesh : this->opaqueMeshes) {
+				this->drawMesh(cb, *mesh, proj, view, cameraPos);
+			}
 		}
-
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->blendPipeline);
-		std::sort(this->nonOpaqueMeshes.begin(), this->nonOpaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) > glm::distance(b->barycenter, cameraPos); }); //sort back-to-front
-		for (auto& mesh : this->nonOpaqueMeshes) {
-			this->drawMesh(cb, *mesh, proj, view, cameraPos);
-		}
-
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, this->globalDescriptorSet, {});
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->envPipeline);
@@ -678,6 +673,15 @@ void VulkanRenderer::renderLoop() {
 		std::vector<glm::mat4> pushConstantsMat = { glm::inverse(proj * viewNoTrans) };
 		cb.pushConstants<glm::mat4x4>(this->envPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
 		cb.draw(6, 1, 0, 0);
+
+		if (!this->nonOpaqueMeshes.empty()) {
+			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->blendPipeline);
+			std::sort(this->nonOpaqueMeshes.begin(), this->nonOpaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) > glm::distance(b->barycenter, cameraPos); }); //sort back-to-front
+			for (auto& mesh : this->nonOpaqueMeshes) {
+				this->drawMesh(cb, *mesh, proj, view, cameraPos);
+			}
+		}
+
 
 		cb.endRenderPass();
 		cb.end();
