@@ -167,11 +167,15 @@ void openGltf(const std::string& filename) {
 					auto& bcf = material.pbrMetallicRoughness.baseColorFactor;
 					auto& ef = material.emissiveFactor;
 					loadedMesh.materialInfo = PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) };
+				
+					loadedMesh.alphaInfo.alphaMode = material.alphaMode == "MASK" ? AlphaMode::eMask : material.alphaMode == "BLEND" ? AlphaMode::eBlend : AlphaMode::eOpaque;
+					loadedMesh.alphaInfo.alphaCutoff = material.alphaCutoff;
 				}
 
 				if (!meshHasTangents)
 					loadedMesh.calculateTangents();
 
+				loadedMesh.calculateBarycenter();
 				loadedMeshes.push_back(loadedMesh);
 			}
 		}

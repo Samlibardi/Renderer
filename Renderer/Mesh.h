@@ -18,12 +18,25 @@ typedef struct {
 	float aoFactor;
 } PBRInfo;
 
+enum class AlphaMode {
+	eOpaque,
+	eMask,
+	eBlend,
+};
+
+typedef struct AlphaInfo {
+	AlphaMode alphaMode = AlphaMode::eOpaque;
+	float alphaCutoff = 0.5f;
+} AlphaInfo;
+
 class Mesh
 {
 public:
 	glm::vec3 translation{ 0.0f };
 	glm::vec3 rotation{ 0.0f };
 	glm::vec3 scale{ 1.0f };
+
+	glm::vec3 barycenter{};
 
 	bool isIndexed = true;
 	std::vector<Vertex> vertices;
@@ -38,9 +51,11 @@ public:
 	Texture aoTexture{};
 
 	PBRInfo materialInfo{};
+	AlphaInfo alphaInfo{};
 
 	vk::DescriptorSet descriptorSet;
 
 	void calculateTangents();
+	void calculateBarycenter();
 };
 

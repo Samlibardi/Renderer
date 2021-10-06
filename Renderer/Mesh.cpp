@@ -1,6 +1,7 @@
 #include "Mesh.h"
 
 #include <glm/geometric.hpp>
+#include <glm/gtx/transform.hpp>
 
 void Mesh::calculateTangents()
 {
@@ -72,4 +73,14 @@ void Mesh::calculateTangents()
 			v0.tangent = glm::normalize(t);
 		}
 	}
+}
+
+void Mesh::calculateBarycenter() {
+	this->barycenter = glm::vec3(0.0f);
+	for (const auto& v : this->vertices) {
+		this->barycenter += v.pos;
+	}
+	this->barycenter /= this->vertices.size();
+
+	this->barycenter = glm::vec3(glm::translate(this->translation) * glm::rotate(this->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(this->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(this->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(this->scale) * glm::vec4(this->barycenter, 1.0f));
 }

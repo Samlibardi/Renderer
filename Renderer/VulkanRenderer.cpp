@@ -98,7 +98,8 @@ VulkanRenderer::~VulkanRenderer() {
 	
 	this->destroyVertexBuffer();
 
-	this->device.destroyPipeline(this->pipeline);
+	this->device.destroyPipeline(this->opaquePipeline);
+	this->device.destroyPipeline(this->blendPipeline);
 	this->device.destroySwapchainKHR(this->swapchain);
 	this->device.destroyCommandPool(this->commandPool);
 	for (size_t i = 0; i < FRAMES_IN_FLIGHT; i++) {
@@ -128,7 +129,7 @@ std::tuple<vk::Image, vk::ImageView, vma::Allocation> VulkanRenderer::createImag
 
 void VulkanRenderer::stageTexture(vk::Image image, TextureInfo& textureInfo) {
 
-	auto [stagingBuffer, sbAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {},  textureInfo.data.size() * sizeof(byte), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
+	auto [stagingBuffer, sbAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {},  textureInfo.data.size() * sizeof(byte), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 
 	void* sbData = this->allocator.mapMemory(sbAllocation);
 	memcpy(sbData, textureInfo.data.data(), textureInfo.data.size() * sizeof(byte));
@@ -160,7 +161,7 @@ void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& texture
 
 	this->envMapImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapImage, vk::ImageViewType::eCube, vk::Format::eR32G32B32A32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6 } });
 
-	auto [stagingBuffer, sbAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {},  textureInfos[0].data.size() * sizeof(byte), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
+	auto [stagingBuffer, sbAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {},  textureInfos[0].data.size() * sizeof(byte), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 
 	void* sbData = this->allocator.mapMemory(sbAllocation);
 
@@ -505,57 +506,99 @@ void VulkanRenderer::setLights(std::vector<PointLight> lights) {
 void VulkanRenderer::setMeshes(const std::vector<Mesh> meshes) {
 	this->vertexBufferMutex.lock();
 	this->destroyVertexBuffer();
-	this->meshes = meshes;
+	
+	for (const Mesh& mesh : meshes) {
+		auto meshPtr = std::make_shared<Mesh>(mesh);
+		switch (mesh.alphaInfo.alphaMode) {
+		case AlphaMode::eOpaque:
+			this->opaqueMeshes.push_back(meshPtr);
+			break;
+		case AlphaMode::eMask:
+			this->alphaMaskMeshes.push_back(meshPtr);
+			this->nonOpaqueMeshes.push_back(meshPtr);
+			break;
+		case AlphaMode::eBlend:
+			this->alphaBlendMeshes.push_back(meshPtr);
+			this->nonOpaqueMeshes.push_back(meshPtr);
+			break;
+		}
+		this->meshes.push_back(meshPtr);
+	}
 
-	size_t pbrBufferSize = meshes.size() * sizeof(PBRInfo);
+	vk::DeviceSize minBufferAlignment = this->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
+	vk::DeviceSize pbrAlignment = std::max(sizeof(PBRInfo), minBufferAlignment);
+	vk::DeviceSize alphaAlignment = std::max(sizeof(AlphaInfo), minBufferAlignment);
+
+	size_t pbrBufferSize = meshes.size() * pbrAlignment;
 	this->allocator.destroyBuffer(this->pbrBuffer, this->pbrBufferAllocation);
-	auto [pbrStagingBuffer, pbrStagingBufferAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, pbrBufferSize , vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
+	auto [pbrStagingBuffer, pbrStagingBufferAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, pbrBufferSize , vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 	std::tie(this->pbrBuffer, this->pbrBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, pbrBufferSize, vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 
-	PBRInfo* sbData = reinterpret_cast<PBRInfo*>(this->allocator.mapMemory(pbrStagingBufferAllocation));
+	size_t alphaBufferSize = (1 + alphaMaskMeshes.size()) * alphaAlignment;
+	auto [alphaStagingBuffer, alphaStagingBufferAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, alphaBufferSize , vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
+	std::tie(this->alphaBuffer, this->alphaBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, alphaBufferSize, vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+
+	unsigned char* pbrSBData = reinterpret_cast<unsigned char*>(this->allocator.mapMemory(pbrStagingBufferAllocation));
+	unsigned char* alphaSBData = reinterpret_cast<unsigned char*>(this->allocator.mapMemory(alphaStagingBufferAllocation));
 
 	for (const auto& [i, mesh] : iter::enumerate(this->meshes)) {
-		mesh.albedoTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
-		mesh.normalTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
-		mesh.metalRoughnessTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
-		mesh.emissiveTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
-		mesh.aoTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
+		mesh->albedoTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
+		mesh->normalTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
+		mesh->metalRoughnessTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
+		mesh->emissiveTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
+		mesh->aoTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
 
-		mesh.descriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, this->pbrDescriptorSetLayout })[0];
+		mesh->descriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, this->pbrDescriptorSetLayout })[0];
 		
-		sbData[i] = mesh.materialInfo;
+		*reinterpret_cast<PBRInfo*>(pbrSBData + i * pbrAlignment) = mesh->materialInfo;
 
-		std::vector<vk::DescriptorBufferInfo> pbrBufferInfos = { vk::DescriptorBufferInfo{this->pbrBuffer, 0, pbrBufferSize } };
-		std::vector<vk::DescriptorImageInfo> albedoImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh.albedoTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
-		std::vector<vk::DescriptorImageInfo> normalImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh.normalTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
-		std::vector<vk::DescriptorImageInfo> metallicRoughnessImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh.metalRoughnessTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
-		std::vector<vk::DescriptorImageInfo> aoImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh.aoTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
-		std::vector<vk::DescriptorImageInfo> emissiveImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh.emissiveTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
+		std::vector<vk::DescriptorBufferInfo> pbrBufferInfos = { vk::DescriptorBufferInfo{this->pbrBuffer, i * pbrAlignment, sizeof(PBRInfo) } };
+		std::vector<vk::DescriptorImageInfo> albedoImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh->albedoTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
+		std::vector<vk::DescriptorImageInfo> normalImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh->normalTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
+		std::vector<vk::DescriptorImageInfo> metallicRoughnessImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh->metalRoughnessTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
+		std::vector<vk::DescriptorImageInfo> aoImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh->aoTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
+		std::vector<vk::DescriptorImageInfo> emissiveImageInfos = { vk::DescriptorImageInfo{this->textureSampler, mesh->emissiveTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal } };
+		std::vector<vk::DescriptorBufferInfo> alphaBufferInfos = { vk::DescriptorBufferInfo{this->alphaBuffer, 0, sizeof(AlphaInfo) } };
 
 		std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
-			vk::WriteDescriptorSet{ mesh.descriptorSet, 0, 0, vk::DescriptorType::eUniformBuffer, {}, pbrBufferInfos},
-			vk::WriteDescriptorSet{ mesh.descriptorSet, 1, 0, vk::DescriptorType::eCombinedImageSampler, albedoImageInfos },
-			vk::WriteDescriptorSet{ mesh.descriptorSet, 2, 0, vk::DescriptorType::eCombinedImageSampler, normalImageInfos },
-			vk::WriteDescriptorSet{ mesh.descriptorSet, 3, 0, vk::DescriptorType::eCombinedImageSampler, metallicRoughnessImageInfos },
-			vk::WriteDescriptorSet{ mesh.descriptorSet, 4, 0, vk::DescriptorType::eCombinedImageSampler, aoImageInfos },
-			vk::WriteDescriptorSet{ mesh.descriptorSet, 5, 0, vk::DescriptorType::eCombinedImageSampler, emissiveImageInfos },
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 0, 0, vk::DescriptorType::eUniformBuffer, {}, pbrBufferInfos},
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 1, 0, vk::DescriptorType::eCombinedImageSampler, albedoImageInfos },
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 2, 0, vk::DescriptorType::eCombinedImageSampler, normalImageInfos },
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 3, 0, vk::DescriptorType::eCombinedImageSampler, metallicRoughnessImageInfos },
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 4, 0, vk::DescriptorType::eCombinedImageSampler, aoImageInfos },
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 5, 0, vk::DescriptorType::eCombinedImageSampler, emissiveImageInfos },
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 6, 0, vk::DescriptorType::eUniformBuffer, {}, alphaBufferInfos },
+		};
+		this->device.updateDescriptorSets(writeDescriptorSets, {});
+	}
+
+	reinterpret_cast<AlphaInfo*>(alphaSBData)[0] = AlphaInfo{ AlphaMode::eOpaque, 0.0f };
+	for (const auto& [i, mesh] : iter::enumerate(this->alphaMaskMeshes)) {
+		*reinterpret_cast<AlphaInfo*>(alphaSBData + (1 + i) * alphaAlignment) = mesh->alphaInfo;
+
+		std::vector<vk::DescriptorBufferInfo> alphaBufferInfos = { vk::DescriptorBufferInfo{this->alphaBuffer, (1 + i) * alphaAlignment, sizeof(AlphaInfo) } };
+		std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
+			vk::WriteDescriptorSet{ mesh->descriptorSet, 6, 0, vk::DescriptorType::eUniformBuffer, {}, alphaBufferInfos },
 		};
 		this->device.updateDescriptorSets(writeDescriptorSets, {});
 	}
 
 	this->allocator.unmapMemory(pbrStagingBufferAllocation);
+	this->allocator.unmapMemory(alphaStagingBufferAllocation);
 
 	auto cmdBuffers = device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ commandPool, vk::CommandBufferLevel::ePrimary, 1 });
 	vk::CommandBuffer cb = cmdBuffers[0];
 
 	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 	cb.copyBuffer(pbrStagingBuffer, this->pbrBuffer, vk::BufferCopy{0, 0, pbrBufferSize});
+	cb.copyBuffer(alphaStagingBuffer, this->alphaBuffer, vk::BufferCopy{0, 0, alphaBufferSize});
 	cb.end();
 
 	vk::Fence fence = this->device.createFence(vk::FenceCreateInfo{});
 	this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, {} }, fence);
 	this->device.waitForFences(fence, true, UINT64_MAX);
 	this->allocator.destroyBuffer(pbrStagingBuffer, pbrStagingBufferAllocation);
+	this->allocator.destroyBuffer(alphaStagingBuffer, alphaStagingBufferAllocation);
 	this->device.freeCommandBuffers(commandPool, cb);
 	this->device.destroyFence(fence);
 
@@ -566,6 +609,24 @@ void VulkanRenderer::setMeshes(const std::vector<Mesh> meshes) {
 void VulkanRenderer::start() {
 	this->running = true;
 	this->renderThread = std::thread([this] { this->renderLoop(); });
+}
+
+void VulkanRenderer::drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& proj, const glm::mat4& view, const glm::vec3& cameraPos) {
+	glm::mat4 model = glm::translate(mesh.translation) * glm::rotate(mesh.rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh.rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh.rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh.scale);
+	std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
+
+	std::vector descriptorSets = { this->globalDescriptorSet, mesh.descriptorSet };
+	cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelineLayout, 0, descriptorSets, {});
+
+	std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
+
+	cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
+	cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4) * 2, pushConstantsVec);
+
+	if (mesh.isIndexed)
+		cb.drawIndexed(mesh.indices.size(), 1, mesh.firstIndex, 0, 0);
+	else
+		cb.draw(mesh.vertices.size(), 1, mesh.firstVertex, 0);
 }
 
 void VulkanRenderer::renderLoop() {
@@ -590,30 +651,25 @@ void VulkanRenderer::renderLoop() {
 		cb.reset();
 		cb.begin(vk::CommandBufferBeginInfo{});
 		cb.beginRenderPass(vk::RenderPassBeginInfo{ this->renderPass, this->swapchainFramebuffers[imageIndex], vk::Rect2D({ 0, 0 }, this->swapchainExtent), clearValues }, vk::SubpassContents::eInline);
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->pipeline);
 		cb.bindVertexBuffers(0, this->vertexIndexBuffer, { 0 });
 		cb.bindIndexBuffer(this->vertexIndexBuffer, this->indexBufferOffset, vk::IndexType::eUint32);
 		
-		auto [cameraPos, view] = this->_camera.positionAndMatrix();
+		glm::vec3 cameraPos;
+		glm::mat4 view;
+		std::tie(cameraPos, view) = this->_camera.positionAndMatrix();
 		
-		for (Mesh& mesh : this->meshes) {
-
-			glm::mat4 model = glm::translate(mesh.translation) * glm::rotate(mesh.rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh.rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh.rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh.scale);
-			std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
-
-			std::vector descriptorSets = { this->globalDescriptorSet, mesh.descriptorSet };
-			cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelineLayout, 0, descriptorSets, {});
-			
-			std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
-
-			cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
-			cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4) * 2, pushConstantsVec);
-
-			if (mesh.isIndexed)
-				cb.drawIndexed(mesh.indices.size(), 1, mesh.firstIndex, 0, 0);
-			else
-				cb.draw(mesh.vertices.size(), 1, mesh.firstVertex, 0);
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->opaquePipeline);
+		std::sort(this->opaqueMeshes.begin(), this->opaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }); //sort front-to-back
+		for (auto& mesh : this->opaqueMeshes) {
+			this->drawMesh(cb, *mesh, proj, view, cameraPos);
 		}
+
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->blendPipeline);
+		std::sort(this->nonOpaqueMeshes.begin(), this->nonOpaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) > glm::distance(b->barycenter, cameraPos); }); //sort back-to-front
+		for (auto& mesh : this->nonOpaqueMeshes) {
+			this->drawMesh(cb, *mesh, proj, view, cameraPos);
+		}
+
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, this->globalDescriptorSet, {});
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->envPipeline);
@@ -778,8 +834,11 @@ void VulkanRenderer::createPipeline() {
 
 	vk::PipelineMultisampleStateCreateInfo multisampleInfo;
 
-	vk::PipelineColorBlendAttachmentState colorBlendAttachment(false, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
-	vk::PipelineColorBlendStateCreateInfo colorBlendInfo{{}, false, vk::LogicOp::eCopy, colorBlendAttachment};
+	vk::PipelineColorBlendAttachmentState opaqueColorBlendAttachment(false, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+	vk::PipelineColorBlendStateCreateInfo opaqueColorBlendInfo{ {}, false, vk::LogicOp::eCopy, opaqueColorBlendAttachment };
+
+	vk::PipelineColorBlendAttachmentState blendColorBlendAttachment(true, vk::BlendFactor::eSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eSubtract, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+	vk::PipelineColorBlendStateCreateInfo blendColorBlendInfo{ {}, false, vk::LogicOp::eCopy, blendColorBlendAttachment };
 	
 	//std::vector<vk::DynamicState> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eLineWidth };
 	std::vector<vk::DynamicState> dynamicStates = { };
@@ -795,6 +854,7 @@ void VulkanRenderer::createPipeline() {
 		vk::DescriptorSetLayoutBinding{3, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
 		vk::DescriptorSetLayoutBinding{4, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
 		vk::DescriptorSetLayoutBinding{5, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+		vk::DescriptorSetLayoutBinding{6, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
 	};
 	this->pbrDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, pbrSetBindings });
 
@@ -807,7 +867,7 @@ void VulkanRenderer::createPipeline() {
 	this->globalDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, globalDescriptorSetBindings });
 
 	const uint32_t maxObjectCount = 512u;
-	std::vector< vk::DescriptorPoolSize> poolSizes = { vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer, 1 * maxObjectCount }, vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 3 + 5 * maxObjectCount }, vk::DescriptorPoolSize { vk::DescriptorType::eStorageBuffer, 1 } };
+	std::vector< vk::DescriptorPoolSize> poolSizes = { vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer, 2 * maxObjectCount }, vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 3 + 5 * maxObjectCount }, vk::DescriptorPoolSize { vk::DescriptorType::eStorageBuffer, 1 } };
 	this->descriptorPool = this->device.createDescriptorPool(vk::DescriptorPoolCreateInfo{ {}, maxObjectCount, poolSizes });
 	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout, this->pbrDescriptorSetLayout };
 	this->globalDescriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ descriptorPool, this->globalDescriptorSetLayout })[0];
@@ -816,8 +876,13 @@ void VulkanRenderer::createPipeline() {
 
 	this->pipelineLayout = this->device.createPipelineLayout(pipelineLayoutInfo);
 
-	auto [r, pipeline] = this->device.createGraphicsPipeline(vk::PipelineCache(), vk::GraphicsPipelineCreateInfo{{}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0});
-	this->pipeline = pipeline;
+	vk::PipelineCache pipelineCache = this->device.createPipelineCache(vk::PipelineCacheCreateInfo{});
+
+	vk::Result r;
+	std::tie(r, this->opaquePipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &opaqueColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
+	std::tie(r, this->blendPipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &blendColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
+
+	this->device.destroyPipelineCache(pipelineCache);
 }
 
 void VulkanRenderer::createVertexBuffer() {
@@ -826,36 +891,36 @@ void VulkanRenderer::createVertexBuffer() {
 
 	size_t vertexBufferSize = 0u;
 	size_t indexBufferSize = 0u;
-	for (Mesh& mesh : this->meshes) {
-		vertexBufferSize += mesh.vertices.size() * sizeof(Vertex);
-		if (mesh.isIndexed)
-			indexBufferSize += mesh.indices.size() * sizeof(uint32_t);
+	for (auto& mesh : this->meshes) {
+		vertexBufferSize += mesh->vertices.size() * sizeof(Vertex);
+		if (mesh->isIndexed)
+			indexBufferSize += mesh->indices.size() * sizeof(uint32_t);
 	}
 
 	std::tie(this->vertexIndexBuffer, this->vertexIndexBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 
-	auto [stagingBuffer, SBAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
+	auto [stagingBuffer, SBAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 
 	unsigned char* stagingData = reinterpret_cast<unsigned char*>(this->allocator.mapMemory(SBAllocation));
 	size_t vbOffset = 0, ibOffset = 0;
 	size_t vertexCount = 0, indexCount = 0;
-	for (Mesh& mesh : this->meshes) {
-		size_t len = mesh.vertices.size() * sizeof(Vertex);
-		memcpy(stagingData + vbOffset, mesh.vertices.data(), len);
+	for (auto& mesh : this->meshes) {
+		size_t len = mesh->vertices.size() * sizeof(Vertex);
+		memcpy(stagingData + vbOffset, mesh->vertices.data(), len);
 		vbOffset += len;
 
-		if (mesh.isIndexed) {
-			len = mesh.indices.size() * sizeof(uint32_t);
-			for (auto [i, index] : iter::enumerate(mesh.indices)) {
+		if (mesh->isIndexed) {
+			len = mesh->indices.size() * sizeof(uint32_t);
+			for (auto [i, index] : iter::enumerate(mesh->indices)) {
 				*(reinterpret_cast<uint32_t*>(stagingData + vertexBufferSize + ibOffset) + i) = index + vertexCount;
 			}
 			ibOffset += len;
 		}
 		
-		mesh.firstIndex = indexCount;
-		mesh.firstVertex = vertexCount;
-		indexCount += mesh.indices.size();
-		vertexCount += mesh.vertices.size();
+		mesh->firstIndex = indexCount;
+		mesh->firstVertex = vertexCount;
+		indexCount += mesh->indices.size();
+		vertexCount += mesh->vertices.size();
 	}
 	this->allocator.unmapMemory(SBAllocation);
 

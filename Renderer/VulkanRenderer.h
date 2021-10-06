@@ -67,7 +67,8 @@ private:
 	std::vector<vk::CommandBuffer> commandBuffers;
 
 	vk::RenderPass renderPass;
-	vk::Pipeline pipeline;
+	vk::Pipeline opaquePipeline;
+	vk::Pipeline blendPipeline;
 	vk::PipelineLayout pipelineLayout;
 
 	vk::DescriptorPool descriptorPool;
@@ -85,6 +86,8 @@ private:
 
 	vk::Buffer pbrBuffer;
 	vma::Allocation pbrBufferAllocation;
+	vk::Buffer alphaBuffer;
+	vma::Allocation alphaBufferAllocation;
 
 	vk::Pipeline envPipeline;
 	vk::PipelineLayout envPipelineLayout;
@@ -118,9 +121,14 @@ private:
 
 	std::shared_mutex vertexBufferMutex;
 	
-	std::vector<Mesh> meshes;
+	std::vector<std::shared_ptr<Mesh>> opaqueMeshes;
+	std::vector<std::shared_ptr<Mesh>> nonOpaqueMeshes;
+	std::vector<std::shared_ptr<Mesh>> alphaMaskMeshes;
+	std::vector<std::shared_ptr<Mesh>> alphaBlendMeshes;
+
+	std::vector<std::shared_ptr<Mesh>> meshes;
 	
-	void renderLoop();
+	
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
 	void createSwapchain();
 	void createRenderPass();
@@ -134,6 +142,9 @@ private:
 	void makeSpecularEnvMap();
 	std::tuple<vk::Pipeline, vk::PipelineLayout> createEnvMapSpecularBakePipeline(vk::RenderPass renderPass);
 	std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::array<std::array<vk::Framebuffer, 10>, 6>> createEnvMapSpecularBakeRenderPass();
+
+	void renderLoop();
+	void drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& proj, const glm::mat4& view, const glm::vec3& cameraPos);
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 	void stageTexture(vk::Image image, TextureInfo& textureInfo);

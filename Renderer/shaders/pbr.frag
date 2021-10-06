@@ -3,6 +3,10 @@
 
 #define PI radians(180)
 
+#define ALPHA_MODE_OPAQUE 0
+#define ALPHA_MODE_MASK 1
+#define ALPHA_MODE_BLEND 2
+
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec3 tangent;
@@ -30,6 +34,10 @@ layout(set=1, binding=2) uniform sampler2D normalSampler;
 layout(set=1, binding=3) uniform sampler2D metalRoughSampler;
 layout(set=1, binding=4) uniform sampler2D aoSampler;
 layout(set=1, binding=5) uniform sampler2D emissiveSampler;
+layout(set=1, binding=6) uniform alphaInfo {
+    int alphaMode;
+    float alphaCutoff;
+};
 
 struct PointLight {
   vec3 position;
@@ -54,6 +62,10 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0);
 void main()
 {	
     vec4 albedo = (texture(albedoSampler, uv) * baseColorFactor);
+    if(alphaMode == ALPHA_MODE_MASK && albedo.a < alphaCutoff) {
+        outColor = vec4(0.0f);
+        return;
+    }
     vec4 metalRoughMap = texture(metalRoughSampler, uv) * vec4(0.0f, roughnessFactor, metallicFactor, 0.0f);
     float metallic = clamp(metalRoughMap.b, 0.0f, 1.0f);
     float roughness = clamp(metalRoughMap.g, 0.05f, 1.0f);
@@ -107,8 +119,10 @@ void main()
 	
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(1.0/2.2));
-   
-    outColor = vec4(color, albedo.a);
+    if(alphaMode == ALPHA_MODE_MASK)
+        outColor = vec4(color, 1.0f);
+    else
+        outColor = vec4(color, albedo.a);
 }
 
 vec3 BRDF(vec3 radiance, vec3 L, vec3 N,  vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0) {
