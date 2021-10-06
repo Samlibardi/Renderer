@@ -90,10 +90,10 @@ void main()
     }
     
     //envmap specular
-    const float NdotV = max(dot(N, V), 0.001);
+    const float NdotV = max(dot(N, V), 1e-3f);
     vec3 envSpecular = textureLod(envSpecSampler, Rv, roughness * textureQueryLevels(envSpecSampler)).rgb;
     vec2 envBRDF = textureLod(brdfLUTSampler, vec2(NdotV, roughness), 0).rg;
-    vec3 F = fresnelSchlick(max(dot(N, V), 0.0), F0);
+    vec3 F = fresnelSchlick(NdotV, F0);
 
     vec3 kS = F;
     vec3 kD = 1.0 - kS;
@@ -117,14 +117,14 @@ vec3 BRDF(vec3 radiance, vec3 L, vec3 N,  vec3 V, vec3 albedo, float roughness, 
         // cook-torrance brdf
         float NDF = DistributionGGX(N, H, roughness);        
         float G   = GeometrySmith(N, V, L, roughness);      
-        vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);       
+        vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);
         
         vec3 kS = F;
         vec3 kD = vec3(1.0) - kS;
         kD *= 1.0 - metallic;	  
         
         vec3 numerator    = NDF * G * F;
-        float denominator = max(4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0), 0.000000001f);
+        float denominator = max(4.0 * max(dot(N, V), 1e-3f) * max(dot(N, L), 1e-3f), 1e-5f);
         vec3 specular     = numerator / denominator;
             
         // add to outgoing radiance Lo
