@@ -20,9 +20,10 @@ layout(push_constant) uniform constants {
 
 void main() {  
     gl_Position = modelViewProj * vec4(inPosition, 1.0f);
-    outPosition = vec3(model*vec4(inPosition, 1.0f));
+    vec4 p = model * vec4(inPosition, 1.0f);
+    outPosition = p.xyz/p.w;
     outUv = inUv;
-    outNormal = normalize(vec3(model * vec4(inNormal, 0.0f)));
-    outTangent = normalize(vec3(model * vec4(inTangent, 0.0f)));
-    outBitangent = normalize(vec3(model * vec4(inBitangent, 0.0f)));
+    outNormal = normalize((model * vec4(inNormal, 0.0f)).xyz);
+    outTangent = normalize((model * vec4(inTangent, 0.0f)).xyz);
+    outBitangent = normalize((model * vec4(inBitangent, 0.0f)).xyz);
 }
