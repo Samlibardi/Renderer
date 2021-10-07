@@ -269,7 +269,7 @@ int main(size_t argc, const char* argv[]) {
 		}
 		else {
 			glm::vec3 translation{ 0.0f };
-			if (pressedKeys[vkfw::Key::eD])
+			if (pressedKeys[vkfw::Key::eW])
 				translation += glm::vec3(0.0f, 0.0f, -1.0f);
 			if (pressedKeys[vkfw::Key::eA])
 				translation += glm::vec3(-1.0f, 0.0f, 0.0f);
