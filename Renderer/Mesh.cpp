@@ -84,3 +84,15 @@ void Mesh::calculateBarycenter() {
 
 	this->barycenter = glm::vec3(glm::translate(this->translation) * glm::rotate(this->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(this->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(this->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(this->scale) * glm::vec4(this->barycenter, 1.0f));
 }
+
+void Mesh::calculateBoundingBox() {
+	this->boundingBox.first = this->boundingBox.second = glm::vec3{ 0.0f };
+	for (const auto& v : this->vertices) {
+		if (v.pos.x < this->boundingBox.first.x) this->boundingBox.first.x = v.pos.x;
+		if (v.pos.y < this->boundingBox.first.y) this->boundingBox.first.y = v.pos.y;
+		if (v.pos.z < this->boundingBox.first.z) this->boundingBox.first.z = v.pos.z;
+		if (v.pos.x > this->boundingBox.first.x) this->boundingBox.second.x = v.pos.x;
+		if (v.pos.y > this->boundingBox.first.y) this->boundingBox.second.y = v.pos.y;
+		if (v.pos.z > this->boundingBox.first.z) this->boundingBox.second.z = v.pos.z;
+	}
+}

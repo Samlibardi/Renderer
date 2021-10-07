@@ -44,6 +44,8 @@ public:
 	size_t firstVertex;
 	size_t firstIndex;
 
+	std::pair<glm::vec3, glm::vec3> boundingBox;
+
 	Texture albedoTexture{};
 	Texture normalTexture{};
 	Texture metalRoughnessTexture{};
@@ -57,5 +59,6 @@ public:
 
 	void calculateTangents();
 	void calculateBarycenter();
+	void calculateBoundingBox();
 };
 
