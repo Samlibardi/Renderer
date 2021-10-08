@@ -2,6 +2,7 @@
 #include <chrono>
 
 #include <itertools/enumerate.hpp>
+#include <itertools/chain.hpp>
 
 #include "VulkanRenderer.h"
 
@@ -11,24 +12,9 @@
 #include "Mesh.h"
 #include "PointLight.h"
 
+#include <iostream>
+
 const int FRAMES_IN_FLIGHT = 2;
-
-std::vector<uint32_t> readShaderFile(std::string&& path) {
-	std::vector<uint32_t> buffer;
-
-	std::ifstream shaderfile;
-	shaderfile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-	shaderfile.open(path, std::ios::in | std::ios::binary);
-
-	shaderfile.seekg(0, std::ios::end);
-	size_t flen = shaderfile.tellg();
-	buffer.resize(flen * sizeof(char) / sizeof(uint32_t) + (flen * sizeof(char) % sizeof(uint32_t) != 0));
-
-	shaderfile.seekg(0, std::ios::beg);
-	shaderfile.read(reinterpret_cast<char*>(buffer.data()), flen);
-
-	return buffer;
-}
 
 VulkanRenderer::VulkanRenderer(vkfw::Window window) : window(window) {
 
@@ -200,13 +186,11 @@ void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& texture
 }
 
 std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapDiffuseBakePipeline(vk::RenderPass renderPass) {
-	std::vector<uint32_t> vertexBytecode = readShaderFile("./shaders/envbake.vert.spv");
-	vk::ShaderModule vertexModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, vertexBytecode });
+	vk::ShaderModule vertexModule = loadShader("./shaders/envbake.vert.spv");
 	vk::PipelineShaderStageCreateInfo vertexStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vertexModule, "main" };
 	this->shaderModules.push_back(vertexModule);
 
-	std::vector<uint32_t> fragBytecode = readShaderFile("./shaders/envbakediffuse.frag.spv");
-	vk::ShaderModule fragModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, fragBytecode });
+	vk::ShaderModule fragModule = loadShader("./shaders/envbakediffuse.frag.spv");
 	vk::PipelineShaderStageCreateInfo fragStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fragModule, "main" };
 	this->shaderModules.push_back(fragModule);
 
@@ -330,13 +314,11 @@ void VulkanRenderer::makeDiffuseEnvMap() {
 
 
 std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapSpecularBakePipeline(vk::RenderPass renderPass) {
-	std::vector<uint32_t> vertexBytecode = readShaderFile("./shaders/envbake.vert.spv");
-	vk::ShaderModule vertexModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, vertexBytecode });
+	vk::ShaderModule vertexModule = loadShader("./shaders/envbake.vert.spv");
 	vk::PipelineShaderStageCreateInfo vertexStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vertexModule, "main" };
 	this->shaderModules.push_back(vertexModule);
 
-	std::vector<uint32_t> fragBytecode = readShaderFile("./shaders/envbakespecular.frag.spv");
-	vk::ShaderModule fragModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, fragBytecode });
+	vk::ShaderModule fragModule = loadShader("./shaders/envbakespecular.frag.spv");
 	vk::PipelineShaderStageCreateInfo fragStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fragModule, "main" };
 	this->shaderModules.push_back(fragModule);
 
@@ -503,7 +485,7 @@ void VulkanRenderer::setLights(std::vector<PointLight> lights) {
 	this->device.updateDescriptorSets(writeDescriptorSets, {});
 }
 
-void VulkanRenderer::setMeshes(const std::vector<Mesh> meshes) {
+void VulkanRenderer::setMeshes(const std::vector<Mesh>& meshes) {
 	this->vertexBufferMutex.lock();
 	this->destroyVertexBuffer();
 	
@@ -523,6 +505,7 @@ void VulkanRenderer::setMeshes(const std::vector<Mesh> meshes) {
 			break;
 		}
 		this->meshes.push_back(meshPtr);
+		this->boundingBoxMeshes.push_back(std::make_shared<Mesh>(mesh.boundingBoxAsMesh()));
 	}
 
 	vk::DeviceSize minBufferAlignment = this->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
@@ -549,6 +532,7 @@ void VulkanRenderer::setMeshes(const std::vector<Mesh> meshes) {
 		mesh->aoTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
 
 		mesh->descriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, this->pbrDescriptorSetLayout })[0];
+		mesh->hasDescriptorSet = true;
 		
 		*reinterpret_cast<PBRInfo*>(pbrSBData + i * pbrAlignment) = mesh->materialInfo;
 
@@ -611,13 +595,83 @@ void VulkanRenderer::start() {
 	this->renderThread = std::thread([this] { this->renderLoop(); });
 }
 
-void VulkanRenderer::drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& proj, const glm::mat4& view, const glm::vec3& cameraPos) {
-	glm::mat4 model = glm::translate(mesh.translation) * glm::rotate(mesh.rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh.rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh.rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh.scale);
-	std::vector<glm::mat4> pushConstantsMat = { proj * view * model, model };
+//Source: http://www.cs.otago.ac.nz/postgrads/alexis/planeExtraction.pdf
+std::array<glm::vec4, 6> frustumPlanesFromMatrix(const glm::mat4& M) {
+	std::array<glm::vec4, 6> planes;/*{
+		glm::vec4{ 1.0f, 0.0f, 0.0f, 1.0f },
+		glm::vec4{ -1.0f, 0.0f, 0.0f, 1.0f },
+		glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f },
+		glm::vec4{ 0.0f, -1.0f, 0.0f, 1.0f },
+		glm::vec4{ 0.0f, 0.0f, 1.0f, 1.0f },
+		glm::vec4{ 0.0f, 0.0f, -1.0f, 0.0f },
+	};*/
 
-	std::vector descriptorSets = { this->globalDescriptorSet, mesh.descriptorSet };
+	//-X
+	planes[0].x = M[0][3] + M[0][0];
+	planes[0].y = M[1][3] + M[1][0];
+	planes[0].z = M[2][3] + M[2][0];
+	planes[0].w = M[3][3] + M[3][0];
+	//+X
+	planes[1].x = M[0][3] - M[0][0];
+	planes[1].y = M[1][3] - M[1][0];
+	planes[1].z = M[2][3] - M[2][0];
+	planes[1].w = M[3][3] - M[3][0];
+	//-Y
+	planes[2].x = M[0][3] + M[0][1];
+	planes[2].y = M[1][3] + M[1][1];
+	planes[2].z = M[2][3] + M[2][1];
+	planes[2].w = M[3][3] + M[3][1];
+	//+Y
+	planes[3].x = M[0][3] - M[0][1];
+	planes[3].y = M[1][3] - M[1][1];
+	planes[3].z = M[2][3] - M[2][1];
+	planes[3].w = M[3][3] - M[3][1];
+	//+Z
+	planes[4].x = M[0][3] - M[0][2];
+	planes[4].y = M[1][3] - M[1][2];
+	planes[4].z = M[2][3] - M[2][2];
+	planes[4].w = M[3][3] - M[3][2];
+	//-Z
+	planes[5].x = M[0][2];
+	planes[5].y = M[1][2];
+	planes[5].z = M[2][2];
+	planes[5].w = M[3][2];
+
+	return planes;
+}
+
+bool cullMesh (const Mesh& mesh, const glm::mat4& modelviewproj) {
+	const auto& planes = frustumPlanesFromMatrix(modelviewproj);
+
+	for (auto& plane : planes) {
+		//auto& plane = planes[5];
+		glm::vec3 nVertex = mesh.boundingBox.first;
+
+		if (plane.x >= 0.0f) nVertex.x = mesh.boundingBox.second.x;
+		if (plane.y >= 0.0f) nVertex.y = mesh.boundingBox.second.y;
+		if (plane.z >= 0.0f) nVertex.z = mesh.boundingBox.second.z;
+
+		if (glm::dot(nVertex, glm::vec3(plane)) + plane.w < 0.0f) //positive halfspace (plane equation) -- this is inverted idk why
+			return true;
+	}
+	return false;
+}
+
+void VulkanRenderer::drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCullingEnabled) {
+
+	const glm::mat4 model = /*glm::translate(mesh.translation) * */glm::rotate(mesh.rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh.rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh.rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh.scale);
+	const glm::mat4 modelviewproj = viewproj * model;
+
+	if (frustumCullingEnabled && cullMesh(mesh, modelviewproj))
+		return;
+
+	std::vector descriptorSets = { this->globalDescriptorSet };
+	if (mesh.hasDescriptorSet)
+		descriptorSets.push_back(mesh.descriptorSet);
+
 	cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelineLayout, 0, descriptorSets, {});
 
+	std::vector<glm::mat4> pushConstantsMat = { modelviewproj, model };
 	std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
 
 	cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
@@ -636,7 +690,7 @@ void VulkanRenderer::renderLoop() {
 	auto frameTime = std::chrono::high_resolution_clock::now();
 	double runningTime = 0;
 
-	glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::perspective(glm::radians(35.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.1f, 1000.0f);
+	glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::perspective(glm::radians(35.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.01f, 1000.0f);
 
 	while (this->running) {
 		auto newFrameTime = std::chrono::high_resolution_clock::now();
@@ -657,20 +711,21 @@ void VulkanRenderer::renderLoop() {
 		glm::vec3 cameraPos;
 		glm::mat4 view;
 		std::tie(cameraPos, view) = this->_camera.positionAndMatrix();
-		
+
+		glm::mat4 viewproj = proj * view;
+		glm::mat4 invviewproj = glm::inverse(viewproj);
+
 		if (!this->opaqueMeshes.empty()) {
 			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->opaquePipeline);
 			std::sort(this->opaqueMeshes.begin(), this->opaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }); //sort front-to-back
 			for (auto& mesh : this->opaqueMeshes) {
-				this->drawMesh(cb, *mesh, proj, view, cameraPos);
+				this->drawMesh(cb, *mesh, viewproj, cameraPos);
 			}
 		}
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, this->globalDescriptorSet, {});
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->envPipeline);
-		glm::mat4 viewNoTrans = view;
-		viewNoTrans[3] = glm::vec4(glm::vec3(0.0f), 1.0f);
-		std::vector<glm::mat4> pushConstantsMat = { glm::inverse(proj * viewNoTrans) };
+		std::vector<glm::mat4> pushConstantsMat = { glm::inverse(proj * glm::mat4(glm::mat3(view))) };
 		cb.pushConstants<glm::mat4x4>(this->envPipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
 		cb.draw(6, 1, 0, 0);
 
@@ -678,10 +733,16 @@ void VulkanRenderer::renderLoop() {
 			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->blendPipeline);
 			std::sort(this->nonOpaqueMeshes.begin(), this->nonOpaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) > glm::distance(b->barycenter, cameraPos); }); //sort back-to-front
 			for (auto& mesh : this->nonOpaqueMeshes) {
-				this->drawMesh(cb, *mesh, proj, view, cameraPos);
+				this->drawMesh(cb, *mesh, viewproj, cameraPos);
 			}
 		}
 
+		/*if (!this->boundingBoxMeshes.empty()) {
+			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->wireframePipeline);
+			for (auto& mesh : this->boundingBoxMeshes) {
+				this->drawMesh(cb, *mesh, viewproj, cameraPos, false);
+			}
+		}*/
 
 		cb.endRenderPass();
 		cb.end();
@@ -800,19 +861,40 @@ void VulkanRenderer::createRenderPass() {
 	}
 }
 
+vk::ShaderModule VulkanRenderer::loadShader(const std::string& path) {
+	std::vector<uint32_t> buffer;
+
+	std::ifstream shaderfile;
+	shaderfile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+	shaderfile.open(path, std::ios::in | std::ios::binary);
+
+	shaderfile.seekg(0, std::ios::end);
+	size_t flen = shaderfile.tellg();
+	buffer.resize(flen * sizeof(char) / sizeof(uint32_t) + (flen * sizeof(char) % sizeof(uint32_t) != 0));
+
+	shaderfile.seekg(0, std::ios::beg);
+	shaderfile.read(reinterpret_cast<char*>(buffer.data()), flen);
+
+	vk::ShaderModule shaderModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, buffer });
+
+	return shaderModule;
+}
+
 void VulkanRenderer::createPipeline() {
 
-	std::vector<uint32_t> vertexBytecode = readShaderFile("./shaders/basic.vert.spv");
-	vk::ShaderModule vertexModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, vertexBytecode });
+	vk::ShaderModule vertexModule = loadShader("./shaders/basic.vert.spv");
 	vk::PipelineShaderStageCreateInfo vertexStageInfo = vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eVertex, vertexModule, "main"};
 
-	std::vector<uint32_t> fragBytecode = readShaderFile("./shaders/pbr.frag.spv");
-	vk::ShaderModule fragModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, fragBytecode });
-	vk::PipelineShaderStageCreateInfo fragStageInfo = vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eFragment, fragModule, "main"};
+	vk::ShaderModule pbrFragModule = loadShader("./shaders/pbr.frag.spv");
+	vk::PipelineShaderStageCreateInfo pbrFragStageInfo = vk::PipelineShaderStageCreateInfo{{}, vk::ShaderStageFlagBits::eFragment, pbrFragModule, "main"};
 
-	this->shaderModules = { vertexModule, fragModule };
+	vk::ShaderModule solidFragModule = loadShader("./shaders/solid.frag.spv");
+	vk::PipelineShaderStageCreateInfo solidFragStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, solidFragModule, "main" };
 
-	std::vector<vk::PipelineShaderStageCreateInfo> shaderStagesInfo = { vertexStageInfo, fragStageInfo };
+	this->shaderModules = { vertexModule, pbrFragModule, solidFragModule };
+
+	std::vector<vk::PipelineShaderStageCreateInfo> shaderStagesInfo = { vertexStageInfo, pbrFragStageInfo };
+	std::vector<vk::PipelineShaderStageCreateInfo> wireframeShaderStagesInfo = { vertexStageInfo, solidFragStageInfo };
 	
 	vk::VertexInputBindingDescription vertexBindingDescription(0, sizeof(Vertex), vk::VertexInputRate::eVertex);
 	std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions = {
@@ -833,8 +915,10 @@ void VulkanRenderer::createPipeline() {
 	vk::PipelineViewportStateCreateInfo viewportInfo{{}, viewports, scissors};
 
 	vk::PipelineRasterizationStateCreateInfo rasterizationInfo{ {}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise, false, 0.0f, 0.0f, 0.0f, 1.0f };
+	vk::PipelineRasterizationStateCreateInfo wireframeRasterizationInfo{ {}, false, false, vk::PolygonMode::eLine, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise, false, 0.0f, 0.0f, 0.0f, 1.0f };
 
 	vk::PipelineDepthStencilStateCreateInfo depthStencilInfo{ {}, true, true, vk::CompareOp::eLess };
+	vk::PipelineDepthStencilStateCreateInfo wireframeDepthStencilInfo{ {}, false, false, vk::CompareOp::eAlways };
 
 	vk::PipelineMultisampleStateCreateInfo multisampleInfo;
 
@@ -885,6 +969,7 @@ void VulkanRenderer::createPipeline() {
 	vk::Result r;
 	std::tie(r, this->opaquePipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &opaqueColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
 	std::tie(r, this->blendPipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &blendColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
+	std::tie(r, this->wireframePipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, wireframeShaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &wireframeRasterizationInfo, &multisampleInfo, &wireframeDepthStencilInfo, &opaqueColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
 
 	this->device.destroyPipelineCache(pipelineCache);
 }
@@ -895,7 +980,8 @@ void VulkanRenderer::createVertexBuffer() {
 
 	size_t vertexBufferSize = 0u;
 	size_t indexBufferSize = 0u;
-	for (auto& mesh : this->meshes) {
+	auto meshes = iter::chain(this->meshes, this->boundingBoxMeshes);
+	for (auto& mesh : meshes) {
 		vertexBufferSize += mesh->vertices.size() * sizeof(Vertex);
 		if (mesh->isIndexed)
 			indexBufferSize += mesh->indices.size() * sizeof(uint32_t);
@@ -908,7 +994,7 @@ void VulkanRenderer::createVertexBuffer() {
 	unsigned char* stagingData = reinterpret_cast<unsigned char*>(this->allocator.mapMemory(SBAllocation));
 	size_t vbOffset = 0, ibOffset = 0;
 	size_t vertexCount = 0, indexCount = 0;
-	for (auto& mesh : this->meshes) {
+	for (auto& mesh : meshes) {
 		size_t len = mesh->vertices.size() * sizeof(Vertex);
 		memcpy(stagingData + vbOffset, mesh->vertices.data(), len);
 		vbOffset += len;
@@ -948,13 +1034,11 @@ void VulkanRenderer::destroyVertexBuffer() {
 
 
 void VulkanRenderer::createEnvPipeline() {
-	std::vector<uint32_t> vertexBytecode = readShaderFile("./shaders/env.vert.spv");
-	vk::ShaderModule vertexModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, vertexBytecode });
+	vk::ShaderModule vertexModule = loadShader("./shaders/env.vert.spv");
 	vk::PipelineShaderStageCreateInfo vertexStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vertexModule, "main" };
 	this->shaderModules.push_back(vertexModule);
 
-	std::vector<uint32_t> fragBytecode = readShaderFile("./shaders/env.frag.spv");
-	vk::ShaderModule fragModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, fragBytecode });
+	vk::ShaderModule fragModule = loadShader("./shaders/env.frag.spv");
 	vk::PipelineShaderStageCreateInfo fragStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fragModule, "main" };
 	this->shaderModules.push_back(fragModule);
 

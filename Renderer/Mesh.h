@@ -55,10 +55,12 @@ public:
 	PBRInfo materialInfo{};
 	AlphaInfo alphaInfo{};
 
-	vk::DescriptorSet descriptorSet;
+	bool hasDescriptorSet = false;
+	vk::DescriptorSet descriptorSet{};
 
 	void calculateTangents();
 	void calculateBarycenter();
 	void calculateBoundingBox();
+	Mesh boundingBoxAsMesh() const;
 };
 

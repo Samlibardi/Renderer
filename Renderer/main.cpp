@@ -176,6 +176,7 @@ void openGltf(const std::string& filename) {
 					loadedMesh.calculateTangents();
 
 				loadedMesh.calculateBarycenter();
+				loadedMesh.calculateBoundingBox();
 				loadedMeshes.push_back(loadedMesh);
 			}
 		}

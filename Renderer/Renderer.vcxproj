@@ -181,6 +181,7 @@
     <None Include="shaders\envbakediffuse.frag" />
     <None Include="shaders\envbakespecular.frag" />
     <None Include="shaders\pbr.frag" />
+    <None Include="shaders\solid.frag" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

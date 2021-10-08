@@ -82,17 +82,60 @@ void Mesh::calculateBarycenter() {
 	}
 	this->barycenter /= this->vertices.size();
 
-	this->barycenter = glm::vec3(glm::translate(this->translation) * glm::rotate(this->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(this->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(this->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(this->scale) * glm::vec4(this->barycenter, 1.0f));
+	glm::vec4 homoBc = glm::translate(this->translation) * glm::rotate(this->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(this->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(this->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(this->scale) * glm::vec4(this->barycenter, 1.0f);
+	this->barycenter = glm::vec3(homoBc)/homoBc.w;
 }
 
 void Mesh::calculateBoundingBox() {
-	this->boundingBox.first = this->boundingBox.second = glm::vec3{ 0.0f };
+	this->boundingBox = { glm::vec3(INFINITY), glm::vec3(-INFINITY) } ;
 	for (const auto& v : this->vertices) {
 		if (v.pos.x < this->boundingBox.first.x) this->boundingBox.first.x = v.pos.x;
 		if (v.pos.y < this->boundingBox.first.y) this->boundingBox.first.y = v.pos.y;
 		if (v.pos.z < this->boundingBox.first.z) this->boundingBox.first.z = v.pos.z;
-		if (v.pos.x > this->boundingBox.first.x) this->boundingBox.second.x = v.pos.x;
-		if (v.pos.y > this->boundingBox.first.y) this->boundingBox.second.y = v.pos.y;
-		if (v.pos.z > this->boundingBox.first.z) this->boundingBox.second.z = v.pos.z;
+
+		if (v.pos.x > this->boundingBox.second.x) this->boundingBox.second.x = v.pos.x;
+		if (v.pos.y > this->boundingBox.second.y) this->boundingBox.second.y = v.pos.y;
+		if (v.pos.z > this->boundingBox.second.z) this->boundingBox.second.z = v.pos.z;
 	}
+}
+
+Mesh Mesh::boundingBoxAsMesh() const {
+	Mesh m{};
+	m.vertices = {
+		Vertex{glm::vec3{this->boundingBox.first.x, this->boundingBox.first.y, this->boundingBox.first.z}},
+		Vertex{glm::vec3{this->boundingBox.first.x, this->boundingBox.first.y, this->boundingBox.second.z}},
+		Vertex{glm::vec3{this->boundingBox.first.x, this->boundingBox.second.y, this->boundingBox.second.z}},
+		Vertex{glm::vec3{this->boundingBox.first.x, this->boundingBox.second.y, this->boundingBox.first.z}},
+		Vertex{glm::vec3{this->boundingBox.second.x, this->boundingBox.second.y, this->boundingBox.first.z}},
+		Vertex{glm::vec3{this->boundingBox.second.x, this->boundingBox.second.y, this->boundingBox.second.z}},
+		Vertex{glm::vec3{this->boundingBox.second.x, this->boundingBox.first.y, this->boundingBox.second.z}},
+		Vertex{glm::vec3{this->boundingBox.second.x, this->boundingBox.first.y, this->boundingBox.first.z}}
+	};
+	for (auto& vertex : m.vertices) {
+		vertex.normal = vertex.pos;
+	};
+
+	m.indices = {
+		0, 1, 0,
+		0, 3, 0,
+		0, 7, 0,
+		1, 2, 1,
+		1, 6, 1,
+		2, 3, 2,
+		2, 5, 2,
+		3, 4, 3,
+		4, 5, 4,
+		4, 7, 4,
+		5, 6, 5,
+		6, 7, 6,
+	};
+	m.isIndexed = true;
+	m.translation = this->translation;
+	m.rotation = this->rotation;
+	m.scale = this->scale;
+	m.calculateBarycenter();
+
+	m.boundingBox = this->boundingBox;
+	
+	return m;
 }

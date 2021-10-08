@@ -26,7 +26,7 @@ std::tuple<glm::vec3, glm::mat4> Camera::positionAndMatrix() {
 void Camera::move(glm::vec3 translation)
 {
 	this->mutex.lock();
-	translation = glm::vec3(glm::mat3(glm::inverse(this->_viewMatrix)) * translation);
+	translation = glm::mat3(glm::inverse(this->_viewMatrix)) * translation;
 
 	this->_position += translation;
 	this->_viewMatrix = this->_viewMatrix * glm::translate(-translation);

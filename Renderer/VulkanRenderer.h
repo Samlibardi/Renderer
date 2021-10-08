@@ -32,7 +32,7 @@ public:
 	~VulkanRenderer();
 	void start();
 
-	void setMeshes(const std::vector<Mesh>);
+	void setMeshes(const std::vector<Mesh>& meshes);
 	void setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos);
 	void setLights(std::vector<PointLight> lights);
 
@@ -41,7 +41,7 @@ public:
 private:
 	bool running = false;
 	
-	Camera _camera{ { 0.0f, 0.5f, 8.0f }, {0.0f, 0.0f, 0.0f} };
+	Camera _camera{ { 0.0f, 0.0f, 0.0f }, {0.0f, 0.0f, 0.0f} };
 
 	vkfw::Window window;
 	vk::Instance vulkanInstance;
@@ -69,6 +69,7 @@ private:
 	vk::RenderPass renderPass;
 	vk::Pipeline opaquePipeline;
 	vk::Pipeline blendPipeline;
+	vk::Pipeline wireframePipeline;
 	vk::PipelineLayout pipelineLayout;
 
 	vk::DescriptorPool descriptorPool;
@@ -125,6 +126,7 @@ private:
 	std::vector<std::shared_ptr<Mesh>> nonOpaqueMeshes;
 	std::vector<std::shared_ptr<Mesh>> alphaMaskMeshes;
 	std::vector<std::shared_ptr<Mesh>> alphaBlendMeshes;
+	std::vector<std::shared_ptr<Mesh>> boundingBoxMeshes;
 
 	std::vector<std::shared_ptr<Mesh>> meshes;
 	
@@ -132,6 +134,7 @@ private:
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
 	void createSwapchain();
 	void createRenderPass();
+	vk::ShaderModule loadShader(const std::string& path);
 	void createPipeline();
 	void createVertexBuffer();
 	void destroyVertexBuffer();
@@ -144,7 +147,7 @@ private:
 	std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::array<std::array<vk::Framebuffer, 10>, 6>> createEnvMapSpecularBakeRenderPass();
 
 	void renderLoop();
-	void drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& proj, const glm::mat4& view, const glm::vec3& cameraPos);
+	void drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCullingEnabled = true);
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 	void stageTexture(vk::Image image, TextureInfo& textureInfo);
