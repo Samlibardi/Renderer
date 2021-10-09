@@ -1,6 +1,5 @@
 #include "Mesh.h"
 
-#include <glm/geometric.hpp>
 #include <glm/gtx/transform.hpp>
 
 void Mesh::calculateTangents()

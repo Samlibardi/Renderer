@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
 
 #include "VulkanRenderer.h"
 
@@ -12,9 +12,6 @@
 #define STBI_MSC_SECURE_CRT
 #define TINYGLTF_NO_EXTERNAL_IMAGE
 #include <tiny_gltf.h>
-
-#include <glm/trigonometric.hpp>
-#include <glm/geometric.hpp>
 
 #include "Mesh.h"
 
@@ -203,12 +200,17 @@ int main(size_t argc, const char* argv[]) {
 	};
 	renderer->setEnvironmentMap(cubeFaces);
 
-	std::vector<PointLight> lights{ {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}} };
-	for (int i = 0; i < 8; i++) {
-		const float angle = glm::radians(360.0f) / 8 * i;
-		const float radius = 10.0f;
-		lights.push_back(PointLight{ {radius * glm::sin(angle), 10.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
-	}
+	std::vector<PointLight> lights{ 
+		{{4.0f, 1.15f, -1.74f}, {70.0f, 24.0f, 2.0f}},
+		{{4.0f, 1.15f, 1.15f}, {72.0f, 26.0f, 1.0f}},
+		{{-5.0f, 1.15f, 1.15f}, {67.0f, 22.0f, 2.0f}},
+		{{-5.0f, 1.15f, -1.74f}, {77.0f, 24.0f, 3.0f}},
+	};
+	/*for (int i = 0; i < 5; i++) {
+		const float angle = glm::radians(360.0f) / 5 * i;
+		const float radius = 3.0f;
+		lights.push_back(PointLight{ {radius * glm::sin(angle), 2.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
+	}*/
 	renderer->setLights(lights);
 
 	openGltf(argv[1]);
@@ -219,8 +221,8 @@ int main(size_t argc, const char* argv[]) {
 	auto frameTime = std::chrono::high_resolution_clock::now();
 	double deltaTime = 0.0;
 
-	const float moveSpeed = 2.5f;
-	const float panSpeed = 5.0f / std::min(window.getHeight(), window.getWidth());
+	const float moveSpeed = 1.5f;
+	const float panSpeed = 3.0f / std::min(window.getHeight(), window.getWidth());
 	const float tiltSpeed = 0.001f;
 
 	std::map<vkfw::Key, boolean> pressedKeys{ {vkfw::Key::eW, false}, {vkfw::Key::eA, false}, {vkfw::Key::eS, false}, {vkfw::Key::eD, false}, };

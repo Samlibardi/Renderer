@@ -94,5 +94,8 @@
     <None Include="shaders\solid.frag">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="shaders\shadowmap.vert">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

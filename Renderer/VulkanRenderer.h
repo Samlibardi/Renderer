@@ -7,8 +7,6 @@
 #include <vulkan/vulkan.hpp>
 #include <vkfw/vkfw.hpp>
 
-#include <glm/vec4.hpp>
-#include <glm/mat4x4.hpp>
 #include <glm/gtx/transform.hpp>
 
 #include <vk_mem_alloc.hpp>
@@ -82,6 +80,7 @@ private:
 	size_t vertexBufferOffset;
 	size_t indexBufferOffset;
 
+	std::vector<PointLight> lights;
 	vk::Buffer lightsBuffer;
 	vk::DeviceMemory lightsBufferMemory;
 
@@ -117,6 +116,7 @@ private:
 	std::vector<vk::Semaphore> acquireImageSemaphores;
 	std::vector<vk::Semaphore> presentSemaphores;
 	std::vector<vk::Fence> frameFences;
+	vk::Semaphore shadowPassSemaphore;
 
 	std::thread renderThread;
 
@@ -129,7 +129,19 @@ private:
 	std::vector<std::shared_ptr<Mesh>> boundingBoxMeshes;
 
 	std::vector<std::shared_ptr<Mesh>> meshes;
-	
+
+	uint32_t shadowMapResolution = 1024u;
+	vk::RenderPass shadowMapRenderPass;
+	vk::CommandBuffer shadowMapCommandBuffer;
+	vk::PipelineLayout shadowMapPipelineLayout;
+	vk::Pipeline shadowMapPipeline;
+	vk::Sampler shadowMapSampler;
+	vk::Image shadowMapImage;
+	vma::Allocation shadowMapImageAllocation;
+	std::vector<vk::ImageView> shadowMapFaceImageViews;
+	vk::ImageView shadowMapCubeArrayImageView;
+	std::vector<vk::Framebuffer> shadowMapFramebuffers;
+
 	
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
 	void createSwapchain();
@@ -139,6 +151,12 @@ private:
 	void createVertexBuffer();
 	void destroyVertexBuffer();
 	void createEnvPipeline();
+
+	void createShadowMapImage();
+	void createShadowMapRenderPass();
+	void createShadowMapPipeline();
+	void renderShadowMaps();
+
 	void makeDiffuseEnvMap();
 	std::tuple<vk::Pipeline, vk::PipelineLayout> createEnvMapDiffuseBakePipeline(vk::RenderPass renderPass);
 	std::tuple<vk::RenderPass, std::array<vk::ImageView, 6>, std::array<vk::Framebuffer, 6>> createEnvMapDiffuseBakeRenderPass();

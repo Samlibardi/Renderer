@@ -51,6 +51,7 @@ layout(set=0, binding=0) readonly buffer lightsBuffer {
 layout(set=0, binding=1) uniform samplerCube envSpecSampler;
 layout(set=0, binding=2) uniform samplerCube envDiffuseSampler;
 layout(set=0, binding=3) uniform sampler2D brdfLUTSampler;
+layout(set=0, binding=4) uniform samplerCubeArrayShadow shadowMapsSampler;
 
 
 vec3 BRDF(vec3 radiance, vec3 L, vec3 N,  vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0);
@@ -58,6 +59,9 @@ float DistributionGGX(vec3 N, vec3 H, float roughness);
 float GeometrySchlickGGX(float NdotV, float roughness);
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
 vec3 fresnelSchlick(float cosTheta, vec3 F0);
+
+const float far = 100.0f;
+const float near = 0.1f;
 
 void main()
 {	
@@ -89,16 +93,33 @@ void main()
     vec3 Lo = vec3(0.0);
 
     for(int i = 0; i < lights.length(); i++) {
+
         vec3 lightPos = lights[i].position;
         vec3 lightIntensity = lights[i].intensity;
-        
-        // calculate per-light radiance
-        vec3 L = normalize(lightPos - position);
+
+        if(max(lightIntensity.r, max(lightIntensity.g, lightIntensity.b)) <= 1e-3f) {
+            continue;
+        }
+
+        vec3 L = lightPos - position;
         float d = distance(lightPos, position);
+
+        vec3 absL = abs(L);
+
+        float lightDepth = max(absL.x, max(absL.y, absL.z)) - 0.05;
+
+        lightDepth = (far - far * near / lightDepth )/(far - near);
+
+        float shadowTest = texture(shadowMapsSampler, vec4(-L, i), lightDepth);
+
+        if(shadowTest < 1e-3)
+            continue;
+
         float attenuation = 1.0 / (d*d);
         vec3 radiance = lightIntensity * attenuation;
         
-        Lo += BRDF(radiance, L, N, V, albedo.rgb, roughness, metallic, F0);
+        L = normalize(L);
+        Lo += shadowTest * BRDF(radiance, L, N, V, albedo.rgb, roughness, metallic, F0);
     }
     
     //envmap specular
