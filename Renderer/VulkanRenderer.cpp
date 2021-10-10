@@ -18,7 +18,7 @@
 
 const int FRAMES_IN_FLIGHT = 2;
 
-VulkanRenderer::VulkanRenderer(vkfw::Window window) : window(window) {
+VulkanRenderer::VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings) : window(window), settings(rendererSettings) {
 
 	vk::ApplicationInfo appInfo{"Custom Vulkan Renderer", 1};
 #ifdef _DEBUG
@@ -731,7 +731,8 @@ void VulkanRenderer::renderLoop() {
 
 		auto&& [r, imageIndex] = this->device.acquireNextImageKHR(this->swapchain, UINT64_MAX, this->acquireImageSemaphores[frameIndex]);
 		
-		this->renderShadowMaps();
+		if(this->settings.shadowsEnabled)
+			this->renderShadowMaps();
 
 		vk::CommandBuffer& cb = this->commandBuffers[imageIndex];
 		cb.reset();
@@ -833,15 +834,17 @@ void VulkanRenderer::createSwapchain() {
 	auto surfaceFormats = this->physicalDevice.getSurfaceFormatsKHR(this->surface);
 
 	vk::SurfaceFormatKHR selectedFormat = surfaceFormats[0];
-	for (auto& format : surfaceFormats) {
-		if (format.colorSpace == vk::ColorSpaceKHR::eHdr10St2084EXT) {
-			selectedFormat = format;
-			break;
-		} else if (format.colorSpace == vk::ColorSpaceKHR::eBt2020LinearEXT) {
-			selectedFormat = format;
+	if (this->settings.hdrEnabled) {
+		for (auto& format : surfaceFormats) {
+			if (format.colorSpace == vk::ColorSpaceKHR::eHdr10St2084EXT) {
+				selectedFormat = format;
+				break;
+			}
+			else if (format.colorSpace == vk::ColorSpaceKHR::eBt2020LinearEXT) {
+				selectedFormat = format;
+			}
 		}
 	}
-	//selectedFormat = vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear };
 
 	vk::SwapchainCreateInfoKHR createInfo{{}, this->surface, surfaceCap.minImageCount, selectedFormat.format, selectedFormat.colorSpace, surfaceCap.currentExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {}};
 	this->swapchain = this->device.createSwapchainKHR(createInfo);
@@ -1242,6 +1245,8 @@ void VulkanRenderer::createShadowMapPipeline() {
 }
 
 void VulkanRenderer::createShadowMapImage() {
+	this->shadowMapResolution = this->settings.shadowMapResolution;
+	
 	uint32_t mipLevels = 1u;
 	uint32_t maxDim = this->shadowMapResolution;
 	//if (maxDim > 1u) mipLevels = std::floor(std::log2(maxDim)) + 1;

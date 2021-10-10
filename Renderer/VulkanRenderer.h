@@ -28,11 +28,18 @@ enum class MeshSortingMode {
 	eBackToFront
 };
 
+typedef struct RendererSettings {
+	bool hdrEnabled = true;
+
+	bool shadowsEnabled = true;
+	uint32_t shadowMapResolution = 2048u;
+};
+
 #pragma once
 class VulkanRenderer
 {
 public:
-	VulkanRenderer(vkfw::Window window);
+	VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings);
 	~VulkanRenderer();
 	void start();
 
@@ -44,6 +51,8 @@ public:
 
 private:
 	bool running = false;
+
+	RendererSettings settings;
 	
 	Camera _camera{ { 0.0f, 0.0f, 0.0f }, {0.0f, 0.0f, 0.0f} };
 
@@ -145,7 +154,7 @@ private:
 
 	std::vector<std::shared_ptr<Mesh>> meshes;
 
-	uint32_t shadowMapResolution = 1024u;
+	uint32_t shadowMapResolution = 2048u;
 	vk::RenderPass shadowMapRenderPass;
 	vk::CommandBuffer shadowMapCommandBuffer;
 	vk::PipelineLayout shadowMapPipelineLayout;

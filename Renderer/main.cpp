@@ -188,7 +188,7 @@ int main(size_t argc, const char* argv[]) {
 	vkfw::Window window = vkfw::createWindow(1920, 900, "Hello Vulkan", {}, {});
 	window.set<vkfw::Attribute::eResizable>(false);
 
-	renderer = new VulkanRenderer(window);
+	renderer = new VulkanRenderer(window, RendererSettings{});
 
 	std::array<TextureInfo, 6> cubeFaces = {
 		loadTexture("./environment/px.png"),
