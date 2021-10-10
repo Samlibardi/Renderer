@@ -97,5 +97,11 @@
     <None Include="shaders\shadowmap.vert">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="shaders\postfx.vert">
+      <Filter>Source Files</Filter>
+    </None>
+    <None Include="shaders\tonemap.frag">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

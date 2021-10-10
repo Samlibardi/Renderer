@@ -22,6 +22,12 @@ typedef struct TextureInfo {
 	uint32_t height = 1;
 } TextureInfo;
 
+enum class MeshSortingMode {
+	eNone,
+	eFrontToBack,
+	eBackToFront
+};
+
 #pragma once
 class VulkanRenderer
 {
@@ -57,23 +63,32 @@ private:
 	vk::Format swapchainFormat;
 	std::vector<vk::Framebuffer> swapchainFramebuffers;
 
+	vk::Image colorImage;
+	vk::ImageView colorImageView;
+	vma::Allocation colorImageAllocation;
+
 	vk::Image depthImage;
 	vk::ImageView depthImageView;
-	vk::DeviceMemory depthImageMemory;
+	vma::Allocation depthImageAllocation;
 
 	vk::CommandPool commandPool;
 	std::vector<vk::CommandBuffer> commandBuffers;
 
 	vk::RenderPass renderPass;
+	vk::PipelineCache pipelineCache;
+	vk::PipelineLayout pipelineLayout;
 	vk::Pipeline opaquePipeline;
 	vk::Pipeline blendPipeline;
 	vk::Pipeline wireframePipeline;
-	vk::PipelineLayout pipelineLayout;
+	vk::PipelineLayout tonemapPipelineLayout;
+	vk::Pipeline tonemapPipeline;
 
 	vk::DescriptorPool descriptorPool;
 	vk::DescriptorSetLayout globalDescriptorSetLayout;
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
+	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	vk::DescriptorSet globalDescriptorSet;
+	vk::DescriptorSet tonemapDescriptorSet;
 
 	vk::Buffer vertexIndexBuffer;
 	vma::Allocation vertexIndexBufferAllocation;
@@ -144,10 +159,14 @@ private:
 
 	
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
+
 	void createSwapchain();
 	void createRenderPass();
+
+	void createDescriptorPool();
 	vk::ShaderModule loadShader(const std::string& path);
 	void createPipeline();
+	void createTonemapPipeline();
 	void createVertexBuffer();
 	void destroyVertexBuffer();
 	void createEnvPipeline();
@@ -165,7 +184,7 @@ private:
 	std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::array<std::array<vk::Framebuffer, 10>, 6>> createEnvMapSpecularBakeRenderPass();
 
 	void renderLoop();
-	void drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCullingEnabled = true);
+	void drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 	void stageTexture(vk::Image image, TextureInfo& textureInfo);

@@ -3,6 +3,8 @@
 
 #include <itertools/enumerate.hpp>
 #include <itertools/chain.hpp>
+#include <itertools/filter.hpp>
+#include <itertools/sorted.hpp>
 
 #include "VulkanRenderer.h"
 
@@ -45,9 +47,14 @@ VulkanRenderer::VulkanRenderer(vkfw::Window window) : window(window) {
 	this->BRDFLutTexture = Texture("./textures/ibl_brdf_lut.png", 1);
 	this->BRDFLutTexture.loadToDevice(this->device, this->allocator, this->graphicsQueue, this->commandPool);
 
+	this->createDescriptorPool();
+
 	this->createSwapchain();
 	this->createRenderPass();
+	
+	this->pipelineCache = this->device.createPipelineCache(vk::PipelineCacheCreateInfo{});
 	this->createPipeline();
+	this->createTonemapPipeline();
 	this->createEnvPipeline();
 
 	this->createShadowMapRenderPass();
@@ -224,11 +231,9 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapDiffuse
 
 	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout };
 
-	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ {}, setLayouts, pushConstantRanges };
+	vk::PipelineLayout pipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
-	vk::PipelineLayout pipelineLayout = this->device.createPipelineLayout(pipelineLayoutInfo);
-
-	auto [r, pipeline] = this->device.createGraphicsPipeline(vk::PipelineCache(), vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, pipelineLayout, renderPass, 0 });
+	auto [r, pipeline] = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, pipelineLayout, renderPass, 0 });
 	
 	return { pipeline, pipelineLayout };
 }
@@ -353,11 +358,9 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapSpecula
 
 	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout };
 
-	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ {}, setLayouts, pushConstantRanges };
+	vk::PipelineLayout pipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
-	vk::PipelineLayout pipelineLayout = this->device.createPipelineLayout(pipelineLayoutInfo);
-
-	auto [r, pipeline] = this->device.createGraphicsPipeline(vk::PipelineCache(), vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, pipelineLayout, renderPass, 0 });
+	auto [r, pipeline] = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, pipelineLayout, renderPass, 0 });
 
 	return { pipeline, pipelineLayout };
 }
@@ -649,50 +652,70 @@ std::array<glm::vec4, 6> frustumPlanesFromMatrix(const glm::mat4& M) {
 }
 
 bool cullMesh (const Mesh& mesh, const glm::mat4& modelviewproj) {
-	const auto& planes = frustumPlanesFromMatrix(modelviewproj);
+	const auto& planes = frustumPlanesFromMatrix(modelviewproj); //planes pointing inside frustum
 
 	for (auto& plane : planes) {
-		//auto& plane = planes[5];
 		glm::vec3 nVertex = mesh.boundingBox.first;
 
 		if (plane.x >= 0.0f) nVertex.x = mesh.boundingBox.second.x;
 		if (plane.y >= 0.0f) nVertex.y = mesh.boundingBox.second.y;
 		if (plane.z >= 0.0f) nVertex.z = mesh.boundingBox.second.z;
 
-		if (glm::dot(nVertex, glm::vec3(plane)) + plane.w < 0.0f) //positive halfspace (plane equation) -- this is inverted idk why
+		if (glm::dot(nVertex, glm::vec3(plane)) + plane.w < 0.0f) //negative halfspace (plane equation)
 			return true;
 	}
 	return false;
 }
 
-void VulkanRenderer::drawMesh(const vk::CommandBuffer& cb, const Mesh& mesh, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCullingEnabled) {
+void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull, MeshSortingMode sortingMode) {
 
-	const glm::mat4 model = glm::translate(mesh.translation) * glm::rotate(mesh.rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh.rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh.rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh.scale);
-	const glm::mat4 modelviewproj = viewproj * model;
+	auto culledMeshes = iter::filter([viewproj](const std::shared_ptr<Mesh> mesh) { 
+		const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
+		const glm::mat4 modelviewproj = viewproj * model;
+		return !cullMesh(*mesh, modelviewproj); 
+	}, meshes);
 
-	if (frustumCullingEnabled && cullMesh(mesh, modelviewproj))
-		return;
+	std::vector<std::shared_ptr<Mesh>> sortedMeshes;
+	switch (sortingMode) {
+	case MeshSortingMode::eFrontToBack:
+		for (const auto& el : iter::sorted(culledMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }))
+			sortedMeshes.push_back(el);
+		break;
+	case MeshSortingMode::eBackToFront:
+		for (const auto& el : iter::sorted(culledMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) > glm::distance(b->barycenter, cameraPos); }))
+			sortedMeshes.push_back(el);
+		break;
+	default:
+		for (const auto& el : culledMeshes)
+			sortedMeshes.push_back(el);
+		break;
+	}
 
-	std::vector descriptorSets = { this->globalDescriptorSet };
-	if (mesh.hasDescriptorSet)
-		descriptorSets.push_back(mesh.descriptorSet);
+	for (auto& mesh : sortedMeshes) {
+		std::vector descriptorSets = { this->globalDescriptorSet };
+		if (mesh->hasDescriptorSet)
+			descriptorSets.push_back(mesh->descriptorSet);
 
-	cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelineLayout, 0, descriptorSets, {});
+		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelineLayout, 0, descriptorSets, {});
 
-	std::vector<glm::mat4> pushConstantsMat = { modelviewproj, model };
-	std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
+		const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
+		const glm::mat4 modelviewproj = viewproj * model;
 
-	cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
-	cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4) * 2, pushConstantsVec);
+		std::vector<glm::mat4> pushConstantsMat = { modelviewproj, model };
+		std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
 
-	if (mesh.isIndexed)
-		cb.drawIndexed(mesh.indices.size(), 1, mesh.firstIndex, 0, 0);
-	else
-		cb.draw(mesh.vertices.size(), 1, mesh.firstVertex, 0);
+		cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, pushConstantsMat);
+		cb.pushConstants<glm::vec4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, sizeof(glm::mat4) * 2, pushConstantsVec);
+
+		if (mesh->isIndexed)
+			cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndex, 0, 0);
+		else
+			cb.draw(mesh->vertices.size(), 1, mesh->firstVertex, 0);
+	}
 }
 
 void VulkanRenderer::renderLoop() {
-	const std::vector<vk::ClearValue> clearValues = { vk::ClearColorValue(std::array<float, 4>({0.0f, 0.0f, 0.0f, 1.0f})), vk::ClearDepthStencilValue{1.0f} };
+	const std::vector<vk::ClearValue> clearValues = { vk::ClearColorValue(std::array<float, 4>({0.0f, 0.0f, 0.0f, 1.0f})), vk::ClearDepthStencilValue{1.0f}, vk::ClearColorValue(std::array<float, 4>({0.0f, 0.0f, 0.0f, 1.0f})) };
 
 	size_t frameIndex = 0;
 	auto frameTime = std::chrono::high_resolution_clock::now();
@@ -723,17 +746,12 @@ void VulkanRenderer::renderLoop() {
 		glm::mat4 view;
 		std::tie(cameraPos, view) = this->_camera.positionAndMatrix();
 
-		std::cout << cameraPos.x << " " << cameraPos.y << " " << cameraPos.z << std::endl;
-
 		glm::mat4 viewproj = proj * view;
 		glm::mat4 invviewproj = glm::inverse(viewproj);
 
 		if (!this->opaqueMeshes.empty()) {
 			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->opaquePipeline);
-			std::sort(this->opaqueMeshes.begin(), this->opaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }); //sort front-to-back
-			for (auto& mesh : this->opaqueMeshes) {
-				this->drawMesh(cb, *mesh, viewproj, cameraPos);
-			}
+			this->drawMeshes(this->opaqueMeshes, cb, viewproj, cameraPos, true, MeshSortingMode::eFrontToBack);
 		}
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, this->globalDescriptorSet, {});
@@ -744,10 +762,7 @@ void VulkanRenderer::renderLoop() {
 
 		if (!this->nonOpaqueMeshes.empty()) {
 			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->blendPipeline);
-			std::sort(this->nonOpaqueMeshes.begin(), this->nonOpaqueMeshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) > glm::distance(b->barycenter, cameraPos); }); //sort back-to-front
-			for (auto& mesh : this->nonOpaqueMeshes) {
-				this->drawMesh(cb, *mesh, viewproj, cameraPos);
-			}
+			this->drawMeshes(this->nonOpaqueMeshes, cb, viewproj, cameraPos, true, MeshSortingMode::eBackToFront);
 		}
 
 		/*if (!this->boundingBoxMeshes.empty()) {
@@ -756,6 +771,13 @@ void VulkanRenderer::renderLoop() {
 				this->drawMesh(cb, *mesh, viewproj, cameraPos, false);
 			}
 		}*/
+
+
+		cb.nextSubpass(vk::SubpassContents::eInline);
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->tonemapPipeline);
+		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->tonemapPipelineLayout, 0, this->tonemapDescriptorSet, {});
+		cb.pushConstants<float>(this->tonemapPipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, { 1.0f, 2.2f });
+		cb.draw(6, 1, 0, 0);
 
 		cb.endRenderPass();
 		cb.end();
@@ -819,6 +841,7 @@ void VulkanRenderer::createSwapchain() {
 			selectedFormat = format;
 		}
 	}
+	//selectedFormat = vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear };
 
 	vk::SwapchainCreateInfoKHR createInfo{{}, this->surface, surfaceCap.minImageCount, selectedFormat.format, selectedFormat.colorSpace, surfaceCap.currentExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {}};
 	this->swapchain = this->device.createSwapchainKHR(createInfo);
@@ -832,46 +855,42 @@ void VulkanRenderer::createSwapchain() {
 		this->swapchainImageViews.push_back(iv);
 	}
 
-	this->depthImage = this->device.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eD24UnormS8Uint, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive });
-
-	auto memRequirements = this->device.getImageMemoryRequirements(this->depthImage);
-
-	auto memProperties = this->physicalDevice.getMemoryProperties();
-
-	uint32_t selectedMemoryTypeIndex = 0;
-	for (auto&& [i, memoryType] : iter::enumerate(memProperties.memoryTypes)) {
-		if (memoryType.propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal) {
-			selectedMemoryTypeIndex = i;
-			break;
-		}
-	}
-
-	this->depthImageMemory = this->device.allocateMemory(vk::MemoryAllocateInfo{memRequirements.size, selectedMemoryTypeIndex});
-	this->device.bindImageMemory(this->depthImage, this->depthImageMemory, 0);
+	std::tie(this->depthImage, this->depthImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eD24UnormS8Uint, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	this->depthImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->depthImage, vk::ImageViewType::e2D, vk::Format::eD24UnormS8Uint, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } });
 	
-	vk::ImageSubresourceRange depthIvRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1);
-	this->depthImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->depthImage, vk::ImageViewType::e2D, vk::Format::eD24UnormS8Uint, vk::ComponentMapping{}, depthIvRange });
+	std::tie(this->colorImage, this->colorImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Unorm, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	this->colorImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->colorImage, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Unorm, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } });
 
 	this->commandBuffers = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, static_cast<uint32_t>(this->swapchainImageViews.size()) });
 }
 
 void VulkanRenderer::createRenderPass() {
 
-	vk::AttachmentDescription colorAttachment{ {}, this->swapchainFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR };
-	vk::AttachmentDescription depthAttachment{ {}, vk::Format::eD24UnormS8Uint, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal };
-	std::vector<vk::AttachmentDescription> attachmentDescriptions = { colorAttachment, depthAttachment };
+	vk::AttachmentDescription mainColorAttachment{ {}, vk::Format::eR8G8B8A8Unorm, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal };
+	vk::AttachmentDescription mainDepthAttachment{ {}, vk::Format::eD24UnormS8Uint, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+	vk::AttachmentDescription presentAttachment{ {}, this->swapchainFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR };
+	std::vector<vk::AttachmentDescription> attachmentDescriptions = { mainColorAttachment, mainDepthAttachment, presentAttachment };
 
-	vk::AttachmentReference colorAttachmentRef{ 0, vk::ImageLayout::eColorAttachmentOptimal };
-	vk::AttachmentReference depthAttachmentRef{ 1, vk::ImageLayout::eDepthStencilAttachmentOptimal };
-	vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorAttachmentRef, {}, &depthAttachmentRef);
+	vk::AttachmentReference mainColorAttachmentRef{ 0, vk::ImageLayout::eColorAttachmentOptimal };
+	vk::AttachmentReference mainDepthAttachmentRef{ 1, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+	vk::SubpassDescription mainSubpass{ {}, vk::PipelineBindPoint::eGraphics, {}, mainColorAttachmentRef, {}, &mainDepthAttachmentRef };
+	
+	vk::AttachmentReference tonemapColorInputAttachmentRef{ 0, vk::ImageLayout::eShaderReadOnlyOptimal };
+	vk::AttachmentReference tonemapColorAttachmentRef{ 2, vk::ImageLayout::eColorAttachmentOptimal };
+	vk::SubpassDescription tonemapSubpass{ {}, vk::PipelineBindPoint::eGraphics, tonemapColorInputAttachmentRef, tonemapColorAttachmentRef };
 
-	vk::SubpassDependency subpassDependency{ VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests, vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests, {}, vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite };
+	std::vector<vk::SubpassDependency> subpassDependencies {
+		vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests, vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests, {}, vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite },
+		vk::SubpassDependency{0, 1, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentRead, vk::AccessFlagBits::eColorAttachmentWrite },
+	};
 
-	this->renderPass = this->device.createRenderPass(vk::RenderPassCreateInfo{{}, attachmentDescriptions, subpass, subpassDependency});
+	std::vector<vk::SubpassDescription> subpasses = { mainSubpass, tonemapSubpass };
+
+	this->renderPass = this->device.createRenderPass(vk::RenderPassCreateInfo{{}, attachmentDescriptions, subpasses, subpassDependencies });
 
 	this->swapchainFramebuffers.reserve(this->swapchainImageViews.size());
 	for (auto& iv : this->swapchainImageViews) {
-		std::vector<vk::ImageView> attachments = { iv, this->depthImageView };
+		std::vector<vk::ImageView> attachments = { this->colorImageView, this->depthImageView, iv };
 		vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{{}, this->renderPass, attachments, this->swapchainExtent.width, this->swapchainExtent.height, 1});
 		this->swapchainFramebuffers.push_back(fb);
 	}
@@ -894,6 +913,17 @@ vk::ShaderModule VulkanRenderer::loadShader(const std::string& path) {
 	vk::ShaderModule shaderModule = this->device.createShaderModule(vk::ShaderModuleCreateInfo{ {}, buffer });
 
 	return shaderModule;
+}
+
+void VulkanRenderer::createDescriptorPool() {
+	const uint32_t maxObjectCount = 512u;
+	std::vector< vk::DescriptorPoolSize> poolSizes = {
+		vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer, 2 * maxObjectCount },
+		vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 4 + 5 * maxObjectCount },
+		vk::DescriptorPoolSize{ vk::DescriptorType::eStorageBuffer, 1 },
+		vk::DescriptorPoolSize{ vk::DescriptorType::eInputAttachment, 1},
+	};
+	this->descriptorPool = this->device.createDescriptorPool(vk::DescriptorPoolCreateInfo{ {}, maxObjectCount, poolSizes });
 }
 
 void VulkanRenderer::createPipeline() {
@@ -971,24 +1001,73 @@ void VulkanRenderer::createPipeline() {
 	};
 	this->globalDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, globalDescriptorSetBindings });
 
-	const uint32_t maxObjectCount = 512u;
-	std::vector< vk::DescriptorPoolSize> poolSizes = { vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer, 2 * maxObjectCount }, vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 4 + 5 * maxObjectCount }, vk::DescriptorPoolSize { vk::DescriptorType::eStorageBuffer, 1 } };
-	this->descriptorPool = this->device.createDescriptorPool(vk::DescriptorPoolCreateInfo{ {}, maxObjectCount, poolSizes });
 	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout, this->pbrDescriptorSetLayout };
-	this->globalDescriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ descriptorPool, this->globalDescriptorSetLayout })[0];
+	
+	this->globalDescriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, this->globalDescriptorSetLayout })[0];
 
-	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ {}, setLayouts, pushConstantRanges };
-
-	this->pipelineLayout = this->device.createPipelineLayout(pipelineLayoutInfo);
-
-	vk::PipelineCache pipelineCache = this->device.createPipelineCache(vk::PipelineCacheCreateInfo{});
+	this->pipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
 	vk::Result r;
-	std::tie(r, this->opaquePipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &opaqueColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
-	std::tie(r, this->blendPipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &blendColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
-	std::tie(r, this->wireframePipeline) = this->device.createGraphicsPipeline(pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, wireframeShaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &wireframeRasterizationInfo, &multisampleInfo, &wireframeDepthStencilInfo, &opaqueColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
+	std::tie(r, this->opaquePipeline) = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &opaqueColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
+	std::tie(r, this->blendPipeline) = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &blendColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
+	std::tie(r, this->wireframePipeline) = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, wireframeShaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &wireframeRasterizationInfo, &multisampleInfo, &wireframeDepthStencilInfo, &opaqueColorBlendInfo, &dynamicStateInfo, this->pipelineLayout, this->renderPass, 0 });
+}
 
-	this->device.destroyPipelineCache(pipelineCache);
+
+void VulkanRenderer::createTonemapPipeline() {
+
+	vk::ShaderModule vertexModule = loadShader("./shaders/postfx.vert.spv");
+	vk::PipelineShaderStageCreateInfo vertexStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eVertex, vertexModule, "main" };
+	this->shaderModules.push_back(vertexModule); 
+
+	vk::ShaderModule fragModule = loadShader("./shaders/tonemap.frag.spv");
+	vk::PipelineShaderStageCreateInfo fragStageInfo = vk::PipelineShaderStageCreateInfo{ {}, vk::ShaderStageFlagBits::eFragment, fragModule, "main" };
+	this->shaderModules.push_back(fragModule);
+
+	std::vector<vk::PipelineShaderStageCreateInfo> shaderStagesInfo = { vertexStageInfo, fragStageInfo };
+
+	vk::PipelineVertexInputStateCreateInfo vertexInputInfo{ {}, {}, {} };
+
+	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo{ {}, vk::PrimitiveTopology::eTriangleList, false };
+
+	std::vector<vk::Viewport> viewports = { vk::Viewport{ 0.0f, 0.0f, static_cast<float>(this->swapchainExtent.width), static_cast<float>(this->swapchainExtent.height), 0.0f, 1.0f  } };
+	std::vector<vk::Rect2D> scissors = { vk::Rect2D({0, 0}, this->swapchainExtent) };
+
+	vk::PipelineViewportStateCreateInfo viewportInfo{ {}, viewports, scissors };
+
+	vk::PipelineRasterizationStateCreateInfo rasterizationInfo{ {}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eNone, vk::FrontFace::eCounterClockwise, false, 0.0f, 0.0f, 0.0f, 1.0f };
+
+	vk::PipelineDepthStencilStateCreateInfo depthStencilInfo{ {}, false, false, vk::CompareOp::eAlways };
+
+	vk::PipelineMultisampleStateCreateInfo multisampleInfo;
+
+	vk::PipelineColorBlendAttachmentState colorBlendAttachment(false, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+	vk::PipelineColorBlendStateCreateInfo colorBlendInfo{ {}, false, vk::LogicOp::eCopy, colorBlendAttachment };
+
+	std::vector<vk::DynamicState> dynamicStates = {};
+	vk::PipelineDynamicStateCreateInfo dynamicStateInfo{ {}, dynamicStates };
+
+
+	std::vector<vk::PushConstantRange> pushConstantRanges = { vk::PushConstantRange{ vk::ShaderStageFlagBits::eFragment, 0, sizeof(float) * 2 }, };
+
+	std::vector<vk::DescriptorSetLayoutBinding> tonemapDescriptorSetBindings = {
+		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eInputAttachment, 1, vk::ShaderStageFlagBits::eFragment},
+	};
+	this->tonemapDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, tonemapDescriptorSetBindings });
+
+	std::vector<vk::DescriptorSetLayout> setLayouts = { this->tonemapDescriptorSetLayout };
+	this->tonemapPipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
+
+	vk::Result r;
+	std::tie(r, this->tonemapPipeline) = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, this->tonemapPipelineLayout, this->renderPass, 1 });
+	
+	this->tonemapDescriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, this->tonemapDescriptorSetLayout })[0];
+
+	std::vector<vk::DescriptorImageInfo> imageInfos = { vk::DescriptorImageInfo{vk::Sampler{}, this->colorImageView, vk::ImageLayout::eShaderReadOnlyOptimal } };
+	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
+		vk::WriteDescriptorSet{ this->tonemapDescriptorSet, 0, 0, vk::DescriptorType::eInputAttachment, imageInfos },
+	};
+	this->device.updateDescriptorSets(writeDescriptorSets, {});
 }
 
 void VulkanRenderer::createVertexBuffer() {
@@ -1088,11 +1167,9 @@ void VulkanRenderer::createEnvPipeline() {
 
 	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout };
 
-	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ {}, setLayouts, pushConstantRanges };
+	this->envPipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
-	this->envPipelineLayout = this->device.createPipelineLayout(pipelineLayoutInfo);
-
-	auto [r, pipeline] = this->device.createGraphicsPipeline(vk::PipelineCache(), vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, this->envPipelineLayout, this->renderPass, 0 });
+	auto [r, pipeline] = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, this->envPipelineLayout, this->renderPass, 0 });
 	this->envPipeline = pipeline;
 }
 
@@ -1158,11 +1235,9 @@ void VulkanRenderer::createShadowMapPipeline() {
 
 	std::vector<vk::DescriptorSetLayout> setLayouts = { };
 
-	vk::PipelineLayoutCreateInfo pipelineLayoutInfo{ {}, setLayouts, pushConstantRanges };
+	this->shadowMapPipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
-	this->shadowMapPipelineLayout = this->device.createPipelineLayout(pipelineLayoutInfo);
-
-	auto [r, pipeline] = this->device.createGraphicsPipeline(vk::PipelineCache(), vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, this->shadowMapPipelineLayout, this->shadowMapRenderPass, 0 });
+	auto [r, pipeline] = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, &vertexInputInfo, &inputAssemblyInfo, nullptr, &viewportInfo, &rasterizationInfo, &multisampleInfo, &depthStencilInfo, &colorBlendInfo, &dynamicStateInfo, this->shadowMapPipelineLayout, this->shadowMapRenderPass, 0 });
 	this->shadowMapPipeline = pipeline;
 }
 
@@ -1219,37 +1294,46 @@ void VulkanRenderer::renderShadowMaps() {
 	cb.bindIndexBuffer(this->vertexIndexBuffer, this->indexBufferOffset, vk::IndexType::eUint32);
 
 	cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->shadowMapPipeline);
-	for (const auto& [i, light] : iter::enumerate(this->lights)) {
 
-		const glm::vec3 cameraPos = light.point;
-		std::sort(this->meshes.begin(), this->meshes.end(), [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }); //sort front-to-back
+	if (!this->opaqueMeshes.empty()) {
+		for (const auto& [i, light] : iter::enumerate(this->lights)) {
+			const glm::vec3 cameraPos = light.point;
+			
+			std::vector<std::shared_ptr<Mesh>> sortedMeshes;
+			for (const auto& el : iter::sorted(this->opaqueMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }))
+				sortedMeshes.push_back(el);
+			
+			for (unsigned short j = 0; j < 6; j++) {
+				cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->shadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->shadowMapResolution, this->shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
 
-		for (unsigned short j = 0; j < 6; j++) {
-			cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->shadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->shadowMapResolution, this->shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+				glm::mat4 view = views[j] * glm::translate(-cameraPos);
+				glm::mat4 viewproj = proj * view;
 
-			glm::mat4 view = views[j] * glm::translate(-cameraPos);
-			glm::mat4 viewproj = proj * view;
+				auto culledMeshes = iter::filter([viewproj](const std::shared_ptr<Mesh> mesh) {
+					const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
+					const glm::mat4 modelviewproj = viewproj * model;
+					return !cullMesh(*mesh, modelviewproj);
+				}, sortedMeshes);
 
-			for (auto& mesh : this->meshes) {
-				const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
-				const glm::mat4 modelviewproj = viewproj * model;
 
-				if (cullMesh(*mesh, modelviewproj))
-					break;
+				for (auto& mesh : culledMeshes) {
+					const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
+					const glm::mat4 modelviewproj = viewproj * model;
 
-				std::vector<glm::mat4> pushConstantsMat = { modelviewproj, model };
-				std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
+					std::vector<glm::mat4> pushConstantsMat = { modelviewproj, model };
+					std::vector<glm::vec4> pushConstantsVec = { glm::vec4(cameraPos, 1.0f) };
 
-				cb.pushConstants<glm::mat4x4>(this->shadowMapPipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstantsMat);
-				cb.pushConstants<glm::vec4>(this->shadowMapPipelineLayout, vk::ShaderStageFlagBits::eVertex, sizeof(glm::mat4) * 2, pushConstantsVec);
+					cb.pushConstants<glm::mat4x4>(this->shadowMapPipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstantsMat);
+					cb.pushConstants<glm::vec4>(this->shadowMapPipelineLayout, vk::ShaderStageFlagBits::eVertex, sizeof(glm::mat4) * 2, pushConstantsVec);
 
-				if (mesh->isIndexed)
-					cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndex, 0, 0);
-				else
-					cb.draw(mesh->vertices.size(), 1, mesh->firstVertex, 0);
+					if (mesh->isIndexed)
+						cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndex, 0, 0);
+					else
+						cb.draw(mesh->vertices.size(), 1, mesh->firstVertex, 0);
+				}
+
+				cb.endRenderPass();
 			}
-
-			cb.endRenderPass();
 		}
 	}
 	cb.end();
