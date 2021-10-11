@@ -76,6 +76,7 @@ private:
 	vk::Format swapchainFormat;
 	vk::Format colorAttachmentFormat = vk::Format::eR8G8B8A8Unorm;
 	vk::Format depthAttachmentFormat = vk::Format::eUndefined;
+	vk::Format envMapFormat = vk::Format::eR8G8B8A8Unorm;
 
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::ImageView> swapchainImageViews;
@@ -167,6 +168,8 @@ private:
 	std::vector<std::shared_ptr<Mesh>> alphaMaskMeshes;
 	std::vector<std::shared_ptr<Mesh>> alphaBlendMeshes;
 	std::vector<std::shared_ptr<Mesh>> boundingBoxMeshes;
+	std::vector<std::shared_ptr<Mesh>> staticMeshes;
+	std::vector<std::shared_ptr<Mesh>> dynamicMeshes;
 
 	std::vector<std::shared_ptr<Mesh>> meshes;
 

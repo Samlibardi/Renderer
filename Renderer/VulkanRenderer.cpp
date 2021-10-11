@@ -152,13 +152,15 @@ void VulkanRenderer::stageTexture(vk::Image image, TextureInfo& textureInfo) {
 
 void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos) {
 	std::tie(this->envMapImage, this->envMapAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D{textureInfos[0].width, textureInfos[0].height, 1}, 1, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->envMapFormat, vk::Extent3D{textureInfos[0].width, textureInfos[0].height, 1}, 1, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
-	this->envMapImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapImage, vk::ImageViewType::eCube, vk::Format::eR32G32B32A32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6 } });
+	this->envMapImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapImage, vk::ImageViewType::eCube, this->envMapFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6 } });
 
 	auto [stagingBuffer, sbAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {},  textureInfos[0].data.size() * sizeof(byte), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
+	//use a staging image to convert from 32bit float to envmapformat
+	auto [stagingImage, siAllocation] = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D{textureInfos[0].width, textureInfos[0].height, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 
 	void* sbData = this->allocator.mapMemory(sbAllocation);
 
@@ -169,9 +171,12 @@ void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& texture
 		memcpy(sbData, textureInfo.data.data(), textureInfo.data.size() * sizeof(byte));
 		
 		cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, stagingImage, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
+		std::vector<vk::BufferImageCopy> copyRegions = { vk::BufferImageCopy{0, 0, 0, vk::ImageSubresourceLayers{vk::ImageAspectFlagBits::eColor, 0, 0, 1}, {0, 0, 0}, {textureInfo.width, textureInfo.height, 1}  } };
+		cb.copyBufferToImage(stagingBuffer, stagingImage, vk::ImageLayout::eTransferDstOptimal, copyRegions);
 		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->envMapImage, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, static_cast<uint32_t>(i), 1} });
-		std::vector<vk::BufferImageCopy> copyRegions = { vk::BufferImageCopy{0, 0, 0, vk::ImageSubresourceLayers{vk::ImageAspectFlagBits::eColor, 0, static_cast<uint32_t>(i), 1}, {0, 0, 0}, {textureInfo.width, textureInfo.height, 1}  } };
-		cb.copyBufferToImage(stagingBuffer, this->envMapImage, vk::ImageLayout::eTransferDstOptimal, copyRegions);
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, stagingImage, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
+		cb.blitImage(stagingImage, vk::ImageLayout::eTransferSrcOptimal, this->envMapImage, vk::ImageLayout::eTransferDstOptimal, { vk::ImageBlit{ vk::ImageSubresourceLayers{vk::ImageAspectFlagBits::eColor, 0, 0, 1}, std::array<vk::Offset3D, 2>{ vk::Offset3D{0, 0, 0}, vk::Offset3D{static_cast<int32_t>(textureInfo.width), static_cast<int32_t>(textureInfo.height), 1} }, vk::ImageSubresourceLayers{vk::ImageAspectFlagBits::eColor, 0, static_cast<uint32_t>(i), 1}, std::array<vk::Offset3D, 2>{ vk::Offset3D{0, 0, 0}, vk::Offset3D{static_cast<int32_t>(textureInfo.width), static_cast<int32_t>(textureInfo.height), 1} }} }, vk::Filter::eNearest);
 		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->envMapImage, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, static_cast<uint32_t>(i), 1} });
 		cb.end();
 
@@ -182,6 +187,7 @@ void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& texture
 
 	this->allocator.unmapMemory(sbAllocation);
 	this->allocator.destroyBuffer(stagingBuffer, sbAllocation);
+	this->allocator.destroyImage(stagingImage, siAllocation);
 	this->device.destroyFence(fence);
 	this->device.freeCommandBuffers(this->commandPool, cb);
 
@@ -239,7 +245,7 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapDiffuse
 }
 
 std::tuple<vk::RenderPass, std::array<vk::ImageView, 6>, std::array<vk::Framebuffer, 6>> VulkanRenderer::createEnvMapDiffuseBakeRenderPass() {
-	vk::AttachmentDescription colorAttachment{ {}, vk::Format::eR32G32B32A32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
+	vk::AttachmentDescription colorAttachment{ {}, this->envMapFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
 	std::vector<vk::AttachmentDescription> attachmentDescriptions = { colorAttachment };
 
 	vk::AttachmentReference colorAttachmentRef{ 0, vk::ImageLayout::eColorAttachmentOptimal };
@@ -252,7 +258,7 @@ std::tuple<vk::RenderPass, std::array<vk::ImageView, 6>, std::array<vk::Framebuf
 	std::array<vk::Framebuffer, 6> framebuffers;
 	std::array<vk::ImageView, 6> imageViews;
 	for (unsigned short i = 0; i < 6; i++) {
-		vk::ImageView iv = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapDiffuseImage, vk::ImageViewType::e2D, vk::Format::eR32G32B32A32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, i, 1} });
+		vk::ImageView iv = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapDiffuseImage, vk::ImageViewType::e2D, this->envMapFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, i, 1} });
 		imageViews[i] = iv;
 		std::vector<vk::ImageView> attachments = { iv };
 		vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, renderPass, attachments, this->envMapDiffuseResolution, this->envMapDiffuseResolution, 1 });
@@ -264,11 +270,11 @@ std::tuple<vk::RenderPass, std::array<vk::ImageView, 6>, std::array<vk::Framebuf
 
 void VulkanRenderer::makeDiffuseEnvMap() {
 	std::tie(this->envMapDiffuseImage, this->envMapDiffuseAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D{this->envMapDiffuseResolution, this->envMapDiffuseResolution, 1}, 1, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->envMapFormat, vk::Extent3D{this->envMapDiffuseResolution, this->envMapDiffuseResolution, 1}, 1, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
-	this->envMapDiffuseImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapDiffuseImage, vk::ImageViewType::eCube, vk::Format::eR32G32B32A32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6 } });
+	this->envMapDiffuseImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapDiffuseImage, vk::ImageViewType::eCube, this->envMapFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6 } });
 	
 	auto&& [renderPass, imageViews, framebuffers] = this->createEnvMapDiffuseBakeRenderPass();
 	auto&& [pipeline, pipelineLayout] = this->createEnvMapDiffuseBakePipeline(renderPass);
@@ -366,7 +372,7 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapSpecula
 }
 
 std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::array<std::array<vk::Framebuffer, 10>, 6>> VulkanRenderer::createEnvMapSpecularBakeRenderPass() {
-	vk::AttachmentDescription colorAttachment{ {}, vk::Format::eR32G32B32A32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
+	vk::AttachmentDescription colorAttachment{ {}, this->envMapFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
 	std::vector<vk::AttachmentDescription> attachmentDescriptions = { colorAttachment };
 
 	vk::AttachmentReference colorAttachmentRef{ 0, vk::ImageLayout::eColorAttachmentOptimal };
@@ -380,7 +386,7 @@ std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::ar
 	std::array<std::array<vk::ImageView, 10>, 6> imageViews;
 	for (unsigned short face = 0; face < 6; face++) {
 		for (unsigned short roughnessLevel = 0; roughnessLevel < 10; roughnessLevel++) {
-			vk::ImageView iv = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapSpecularImage, vk::ImageViewType::e2D, vk::Format::eR32G32B32A32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, roughnessLevel, 1, face, 1} });
+			vk::ImageView iv = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapSpecularImage, vk::ImageViewType::e2D, this->envMapFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, roughnessLevel, 1, face, 1} });
 			imageViews[face][roughnessLevel] = iv;
 			std::vector<vk::ImageView> attachments = { iv };
 			uint32_t fbRes = this->envMapSpecularResolution / (1 << roughnessLevel);
@@ -394,11 +400,11 @@ std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::ar
 
 void VulkanRenderer::makeSpecularEnvMap() {
 	std::tie(this->envMapSpecularImage, this->envMapSpecularAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, vk::Format::eR32G32B32A32Sfloat, vk::Extent3D{this->envMapSpecularResolution, this->envMapSpecularResolution, 1}, 10, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->envMapFormat, vk::Extent3D{this->envMapSpecularResolution, this->envMapSpecularResolution, 1}, 10, 6, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
-	this->envMapSpecularImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapSpecularImage, vk::ImageViewType::eCube, vk::Format::eR32G32B32A32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 10, 0, 6 } });
+	this->envMapSpecularImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->envMapSpecularImage, vk::ImageViewType::eCube, this->envMapFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 10, 0, 6 } });
 
 	auto&& [renderPass, imageViews, framebuffers] = this->createEnvMapSpecularBakeRenderPass();
 	auto&& [pipeline, pipelineLayout] = this->createEnvMapSpecularBakePipeline(renderPass);
@@ -832,12 +838,11 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 	allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_1;
 	this->allocator = vma::createAllocator(allocatorInfo);
 
-	std::array<vk::Format, 8> colorFormatCandidates = {
-		vk::Format::eR16G16B16A16Uscaled,
+	std::array<vk::Format, 4> colorFormatCandidates = {
 		vk::Format::eR16G16B16A16Sfloat,
-		vk::Format::eR16G16B16A16Sscaled,
-		vk::Format::eR8G8B8A8Uscaled,
-		vk::Format::eR8G8B8A8Sscaled,
+		vk::Format::eR32G32B32A32Sfloat,
+		vk::Format::eR8G8B8A8Srgb,
+		vk::Format::eR8G8B8A8Unorm,
 	};
 
 	for (auto& format : colorFormatCandidates) {
@@ -871,6 +876,23 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 
 	if (this->depthAttachmentFormat == vk::Format::eUndefined)
 		throw std::runtime_error("No Supported Depth Attachment Formats Available");
+
+	std::array<vk::Format, 3> envMapFormatCandidates = {
+		vk::Format::eR16G16B16A16Sfloat,
+		vk::Format::eR8G8B8A8Srgb,
+		vk::Format::eR8G8B8A8Unorm,
+	};
+
+	for (auto& format : envMapFormatCandidates) {
+		try {
+			physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled, {});
+			this->envMapFormat = format;
+			break;
+		}
+		catch (vk::FormatNotSupportedError e) {
+			continue;
+		}
+	}
 }
 
 void VulkanRenderer::createSwapchain() {
