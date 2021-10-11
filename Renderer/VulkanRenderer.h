@@ -32,8 +32,15 @@ typedef struct RendererSettings {
 	bool hdrEnabled = true;
 
 	bool shadowsEnabled = true;
-	uint32_t shadowMapResolution = 2048u;
+	uint32_t shadowMapResolution = 512u;
 };
+
+typedef struct CameraData {
+	glm::vec4 position;
+	glm::mat4 viewMatrix;
+	glm::mat4 viewProjectionMatrix;
+	glm::mat4 invViewProjectionMatrix;
+} CameraData;
 
 #pragma once
 class VulkanRenderer
@@ -45,7 +52,7 @@ public:
 
 	void setMeshes(const std::vector<Mesh>& meshes);
 	void setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos);
-	void setLights(std::vector<PointLight> lights);
+	void setLights(const std::vector<PointLight>& lights);
 
 	Camera& camera() { return this->_camera; };
 
@@ -97,9 +104,11 @@ private:
 
 	vk::DescriptorPool descriptorPool;
 	vk::DescriptorSetLayout globalDescriptorSetLayout;
+	vk::DescriptorSetLayout cameraDescriptorSetLayout;
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	vk::DescriptorSet globalDescriptorSet;
+	vk::DescriptorSet cameraDescriptorSet;
 	vk::DescriptorSet tonemapDescriptorSet;
 
 	vk::Buffer vertexIndexBuffer;
@@ -107,9 +116,13 @@ private:
 	size_t vertexBufferOffset;
 	size_t indexBufferOffset;
 
+	vk::Buffer cameraBuffer;
+	vma::Allocation cameraBufferAllocation;
+	CameraData* cameraUBO;
+
 	std::vector<PointLight> lights;
 	vk::Buffer lightsBuffer;
-	vk::DeviceMemory lightsBufferMemory;
+	vma::Allocation lightsBufferAllocation;
 
 	vk::Buffer pbrBuffer;
 	vma::Allocation pbrBufferAllocation;
@@ -157,7 +170,6 @@ private:
 
 	std::vector<std::shared_ptr<Mesh>> meshes;
 
-	uint32_t shadowMapResolution = 2048u;
 	vk::RenderPass shadowMapRenderPass;
 	vk::CommandBuffer shadowMapCommandBuffer;
 	vk::PipelineLayout shadowMapPipelineLayout;

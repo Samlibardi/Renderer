@@ -69,7 +69,7 @@ void Texture::loadToDevice(const vk::Device device, const vma::Allocator allocat
 	if (!this->core->isLoadedToLocal)
 		this->loadFromFile();
 
-	auto[stagingBuffer, stagingBufferAllocation] = allocator.createBuffer(vk::BufferCreateInfo{ {}, this->core->data.size(), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
+	auto[stagingBuffer, stagingBufferAllocation] = allocator.createBuffer(vk::BufferCreateInfo{ {}, this->core->data.size(), vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 	void* sbData = allocator.mapMemory(stagingBufferAllocation);
 	memcpy(sbData, this->core->data.data(), this->core->data.size());
 	allocator.unmapMemory(stagingBufferAllocation);

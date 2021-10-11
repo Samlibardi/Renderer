@@ -15,7 +15,13 @@ layout(location = 4) out vec2 outUv;
 layout(push_constant) uniform constants {
     mat4 modelViewProj;
     mat4 model;
-    vec4 cameraPos;
+};
+
+layout(set=2, binding=0) uniform cameraData {
+	vec4 cameraPos;
+	mat4 viewMatrix;
+	mat4 viewProjectionMatrix;
+	mat4 invViewProjectionMatrix;
 };
 
 void main() {  

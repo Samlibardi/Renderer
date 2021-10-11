@@ -1,6 +1,7 @@
 #define NOMINMAX
 
 #include <filesystem>
+#include <iostream>
 
 #include <glm/glm.hpp>
 
@@ -182,6 +183,11 @@ void openGltf(const std::string& filename) {
 }
 
 int main(size_t argc, const char* argv[]) {
+
+	if (argc < 2) {
+		std::cout << "Please input filename" << std::endl;
+		return 1;
+	}
 
 	vkfw::init();
 

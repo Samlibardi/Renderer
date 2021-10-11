@@ -15,12 +15,6 @@ layout(location = 4) in vec2 uv;
 
 layout(location = 0) out vec4 outColor;
 
-layout(push_constant) uniform constants {
-    mat4 modelViewProj;
-    mat4 model;
-    vec4 cameraPos;
-};
-
 layout(set=1, binding=0) uniform materialInfo {
   vec4 baseColorFactor;
   vec4 emissiveFactor;
@@ -53,6 +47,12 @@ layout(set=0, binding=2) uniform samplerCube envDiffuseSampler;
 layout(set=0, binding=3) uniform sampler2D brdfLUTSampler;
 layout(set=0, binding=4) uniform samplerCubeArrayShadow shadowMapsSampler;
 
+layout(set=2, binding=0) uniform cameraData {
+	vec4 cameraPos;
+	mat4 viewMatrix;
+	mat4 viewProjectionMatrix;
+	mat4 invViewProjectionMatrix;
+};
 
 vec3 BRDF(vec3 radiance, vec3 L, vec3 N,  vec3 V, vec3 albedo, float roughness, float metallic, vec3 F0);
 float DistributionGGX(vec3 N, vec3 H, float roughness);
