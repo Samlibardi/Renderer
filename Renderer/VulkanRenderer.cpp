@@ -833,12 +833,11 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 	this->allocator = vma::createAllocator(allocatorInfo);
 
 	std::array<vk::Format, 8> colorFormatCandidates = {
-		vk::Format::eR16G16B16A16Unorm,
+		vk::Format::eR16G16B16A16Uscaled,
 		vk::Format::eR16G16B16A16Sfloat,
-		vk::Format::eR12X4G12X4B12X4A12X4Unorm4Pack16,
-		vk::Format::eR10X6G10X6B10X6A10X6Unorm4Pack16,
-		vk::Format::eR8G8B8A8Unorm,
-		vk::Format::eR8G8B8A8Srgb,
+		vk::Format::eR16G16B16A16Sscaled,
+		vk::Format::eR8G8B8A8Uscaled,
+		vk::Format::eR8G8B8A8Sscaled,
 	};
 
 	for (auto& format : colorFormatCandidates) {
