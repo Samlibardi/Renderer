@@ -5,7 +5,8 @@
 class PointLight
 {
 public:
-	alignas(16) glm::vec3 point;
-	alignas(16) glm::vec3 intensity;
+	glm::vec3 point;
+	glm::vec3 intensity;
+	bool staticMapRendered = false;
 };
 

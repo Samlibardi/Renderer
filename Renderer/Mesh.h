@@ -37,6 +37,8 @@ public:
 
 	glm::vec3 barycenter{};
 
+	bool isStatic = true;
+
 	bool isIndexed = true;
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;

@@ -42,6 +42,11 @@ typedef struct CameraData {
 	glm::mat4 invViewProjectionMatrix;
 } CameraData;
 
+typedef struct PointLightData {
+	alignas(16) glm::vec3 point;
+	alignas(16) glm::vec3 intensity;
+};
+
 #pragma once
 class VulkanRenderer
 {
@@ -174,15 +179,20 @@ private:
 	std::vector<std::shared_ptr<Mesh>> meshes;
 
 	vk::RenderPass shadowMapRenderPass;
+	vk::RenderPass staticShadowMapRenderPass;
 	vk::CommandBuffer shadowMapCommandBuffer;
 	vk::PipelineLayout shadowMapPipelineLayout;
 	vk::Pipeline shadowMapPipeline;
 	vk::Sampler shadowMapSampler;
 	vk::Image shadowMapImage;
+	vk::Image staticShadowMapImage;
 	vma::Allocation shadowMapImageAllocation;
-	std::vector<vk::ImageView> shadowMapFaceImageViews;
+	vma::Allocation staticShadowMapImageAllocation;
 	vk::ImageView shadowMapCubeArrayImageView;
+	std::vector<vk::ImageView> shadowMapFaceImageViews;
+	std::vector<vk::ImageView> staticShadowMapFaceImageViews;
 	std::vector<vk::Framebuffer> shadowMapFramebuffers;
+	std::vector<vk::Framebuffer> staticShadowMapFramebuffers;
 
 	
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
@@ -199,7 +209,9 @@ private:
 	void createEnvPipeline();
 
 	void createShadowMapImage();
+	void createStaticShadowMapImage();
 	void createShadowMapRenderPass();
+	void createStaticShadowMapRenderPass();
 	void createShadowMapPipeline();
 	void renderShadowMaps();
 

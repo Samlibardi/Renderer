@@ -58,6 +58,7 @@ VulkanRenderer::VulkanRenderer(const vkfw::Window window, const RendererSettings
 	this->createEnvPipeline();
 
 	this->createShadowMapRenderPass();
+	this->createStaticShadowMapRenderPass();
 	this->createShadowMapPipeline();
 
 	this->acquireImageSemaphores.reserve(FRAMES_IN_FLIGHT);
@@ -473,13 +474,15 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& lights) {
 
 	this->lights = lights;
 
-	size_t bufferSize = lights.size() * sizeof(PointLight);
+	size_t bufferSize = lights.size() * sizeof(PointLightData);
 	std::tie(this->lightsBuffer, this->lightsBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 
 	auto [lightsStagingBuffer, lightsStagingBufferAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 
-	void* data = this->allocator.mapMemory(lightsStagingBufferAllocation);
-	memcpy(data, lights.data(), bufferSize);
+	PointLightData* data = reinterpret_cast<PointLightData*>(this->allocator.mapMemory(lightsStagingBufferAllocation));
+	for (auto&& [i, light] : iter::enumerate(lights)) {
+		data[i] = PointLightData{ light.point, light.intensity };
+	}
 	this->allocator.unmapMemory(lightsStagingBufferAllocation);
 
 	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
@@ -501,6 +504,7 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& lights) {
 	this->device.updateDescriptorSets(writeDescriptorSets, {});
 
 	this->createShadowMapImage();
+	this->createStaticShadowMapImage();
 }
 
 void VulkanRenderer::setMeshes(const std::vector<Mesh>& meshes) {
@@ -522,6 +526,10 @@ void VulkanRenderer::setMeshes(const std::vector<Mesh>& meshes) {
 			this->nonOpaqueMeshes.push_back(meshPtr);
 			break;
 		}
+		if (mesh.isStatic)
+			this->staticMeshes.push_back(meshPtr);
+		else
+			this->dynamicMeshes.push_back(meshPtr);
 		this->meshes.push_back(meshPtr);
 		this->boundingBoxMeshes.push_back(std::make_shared<Mesh>(mesh.boundingBoxAsMesh()));
 	}
@@ -1261,7 +1269,7 @@ void VulkanRenderer::createEnvPipeline() {
 
 
 void VulkanRenderer::createShadowMapRenderPass() {
-	vk::AttachmentDescription depthAttachment{ {}, this->depthAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal };
+	vk::AttachmentDescription depthAttachment{ {}, this->depthAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal };
 	std::vector<vk::AttachmentDescription> attachmentDescriptions = { depthAttachment };
 
 	vk::AttachmentReference depthAttachmentRef{ 0, vk::ImageLayout::eDepthStencilAttachmentOptimal };
@@ -1277,6 +1285,23 @@ void VulkanRenderer::createShadowMapRenderPass() {
 	this->shadowMapRenderPass = this->device.createRenderPass(vk::RenderPassCreateInfo{ {}, attachmentDescriptions, subpass, subpassDependencies });
 
 	this->shadowMapCommandBuffer = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
+}
+
+void VulkanRenderer::createStaticShadowMapRenderPass() {
+	vk::AttachmentDescription depthAttachment{ {}, this->depthAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal };
+	std::vector<vk::AttachmentDescription> attachmentDescriptions = { depthAttachment };
+
+	vk::AttachmentReference depthAttachmentRef{ 0, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+
+	vk::SubpassDescription subpass{ {}, vk::PipelineBindPoint::eGraphics };
+	subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+	std::vector<vk::SubpassDependency> subpassDependencies{
+		vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eEarlyFragmentTests, vk::AccessFlagBits::eShaderRead, vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::DependencyFlagBits::eByRegion},
+		vk::SubpassDependency{0, VK_SUBPASS_EXTERNAL, vk::PipelineStageFlagBits::eLateFragmentTests, vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::AccessFlagBits::eShaderRead, vk::DependencyFlagBits::eByRegion},
+	};
+
+	this->staticShadowMapRenderPass = this->device.createRenderPass(vk::RenderPassCreateInfo{ {}, attachmentDescriptions, subpass, subpassDependencies });
 }
 
 void VulkanRenderer::createShadowMapPipeline() {
@@ -1333,7 +1358,7 @@ void VulkanRenderer::createShadowMapImage() {
 	//if (maxDim > 1u) mipLevels = std::floor(std::log2(maxDim)) + 1;
 
 	std::tie(this->shadowMapImage, this->shadowMapImageAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
@@ -1359,6 +1384,29 @@ void VulkanRenderer::createShadowMapImage() {
 	this->device.updateDescriptorSets(writeDescriptorSets, {});
 }
 
+void VulkanRenderer::createStaticShadowMapImage() {
+	uint32_t mipLevels = 1u;
+	uint32_t maxDim = this->settings.shadowMapResolution;
+	//if (maxDim > 1u) mipLevels = std::floor(std::log2(maxDim)) + 1;
+
+	std::tie(this->staticShadowMapImage, this->staticShadowMapImageAllocation) = this->allocator.createImage(
+		vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive },
+		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
+	);
+
+	this->shadowMapFaceImageViews.reserve(this->lights.size() * 6);
+	this->shadowMapFramebuffers.reserve(this->lights.size() * 6);
+	for (const auto& [i, light] : iter::enumerate(this->lights)) {
+		for (unsigned short j = 0; j < 6; j++) {
+			vk::ImageView faceView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->staticShadowMapImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, static_cast<uint32_t>(i * 6 + j), 1 } });
+			this->staticShadowMapFaceImageViews.push_back(faceView);
+			std::vector<vk::ImageView> attachments = { faceView };
+			vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->staticShadowMapRenderPass, attachments, this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1 });
+			this->staticShadowMapFramebuffers.push_back(fb);
+		}
+	}
+}
+
 void VulkanRenderer::renderShadowMaps() {
 	static const std::vector<vk::ClearValue> clearValues = { vk::ClearDepthStencilValue{1.0f} };
 	static const std::array<glm::mat4, 6> views = {
@@ -1381,27 +1429,78 @@ void VulkanRenderer::renderShadowMaps() {
 
 	cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->shadowMapPipeline);
 
-	if (!this->opaqueMeshes.empty()) {
-		for (const auto& [i, light] : iter::enumerate(this->lights)) {
-			const glm::vec3 cameraPos = light.point;
-			
-			std::vector<std::shared_ptr<Mesh>> sortedMeshes;
-			for (const auto& el : iter::sorted(this->opaqueMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }))
-				sortedMeshes.push_back(el);
-			
-			for (unsigned short j = 0; j < 6; j++) {
-				cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->shadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->settings.shadowMapResolution, this->settings.shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+	for (auto&& [i, light] : iter::enumerate(this->lights)) {
+		if (light.staticMapRendered)
+			continue;
 
-				glm::mat4 view = views[j] * glm::translate(-cameraPos);
-				glm::mat4 viewproj = proj * view;
+		const glm::vec3 cameraPos = light.point;
 
-				auto culledMeshes = iter::filter([viewproj](const std::shared_ptr<Mesh> mesh) {
-					const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
-					const glm::mat4 modelviewproj = viewproj * model;
-					return !cullMesh(*mesh, modelviewproj);
+		std::vector<std::shared_ptr<Mesh>> sortedMeshes;
+		for (const auto& el : iter::sorted(this->staticMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }))
+			sortedMeshes.push_back(el);
+
+		for (unsigned short j = 0; j < 6; j++) {
+			cb.beginRenderPass(vk::RenderPassBeginInfo{ this->staticShadowMapRenderPass, this->staticShadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->settings.shadowMapResolution, this->settings.shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+
+			glm::mat4 view = views[j] * glm::translate(-cameraPos);
+			glm::mat4 viewproj = proj * view;
+
+			auto culledMeshes = iter::filter([viewproj](const std::shared_ptr<Mesh> mesh) {
+				const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
+				const glm::mat4 modelviewproj = viewproj * model;
+				return !cullMesh(*mesh, modelviewproj);
 				}, sortedMeshes);
 
 
+			for (auto& mesh : culledMeshes) {
+				const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
+				const glm::mat4 modelviewproj = viewproj * model;
+
+				std::vector<glm::mat4> pushConstants = { modelviewproj, model };
+
+				cb.pushConstants<glm::mat4x4>(this->shadowMapPipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstants);
+
+				if (mesh->isIndexed)
+					cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndex, 0, 0);
+				else
+					cb.draw(mesh->vertices.size(), 1, mesh->firstVertex, 0);
+			}
+
+			cb.endRenderPass();
+			light.staticMapRendered = true;
+		}
+	}
+
+	cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, this->graphicsQueueFamilyIndex, this->graphicsQueueFamilyIndex, this->shadowMapImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS } });
+	cb.blitImage(this->staticShadowMapImage, vk::ImageLayout::eTransferSrcOptimal, this->shadowMapImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, 0, static_cast<uint32_t>(this->lights.size() * 6) }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->settings.shadowMapResolution), static_cast<int32_t>(this->settings.shadowMapResolution), 1 } }, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, 0, static_cast<uint32_t>(this->lights.size() * 6) }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->settings.shadowMapResolution), static_cast<int32_t>(this->settings.shadowMapResolution), 1 } }}, vk::Filter::eNearest);
+
+	cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTopOfPipe, vk::DependencyFlagBits::eByRegion, {}, {}, {});
+
+	for (const auto& [i, light] : iter::enumerate(this->lights)) {
+		const glm::vec3 cameraPos = light.point;
+			
+		std::vector<std::shared_ptr<Mesh>> sortedMeshes;
+		for (const auto& el : iter::sorted(this->dynamicMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter, cameraPos) < glm::distance(b->barycenter, cameraPos); }))
+			sortedMeshes.push_back(el);
+			
+		for (unsigned short j = 0; j < 6; j++) {
+
+			glm::mat4 view = views[j] * glm::translate(-cameraPos);
+			glm::mat4 viewproj = proj * view;
+
+			auto culledMeshes = iter::filter([viewproj](const std::shared_ptr<Mesh> mesh) {
+				const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
+				const glm::mat4 modelviewproj = viewproj * model;
+				return !cullMesh(*mesh, modelviewproj);
+			}, sortedMeshes);
+
+			uint32_t nonCulledMeshes = 0;
+			for (auto& mesh : culledMeshes)
+				nonCulledMeshes++;
+
+			if (nonCulledMeshes > 0) {
+				cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->shadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->settings.shadowMapResolution, this->settings.shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+				
 				for (auto& mesh : culledMeshes) {
 					const glm::mat4 model = glm::translate(mesh->translation) * glm::rotate(mesh->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(mesh->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(mesh->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(mesh->scale);
 					const glm::mat4 modelviewproj = viewproj * model;
@@ -1420,6 +1519,7 @@ void VulkanRenderer::renderShadowMaps() {
 			}
 		}
 	}
+
 	cb.end();
 
 	this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, this->shadowPassSemaphore });
