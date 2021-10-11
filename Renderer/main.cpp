@@ -185,7 +185,7 @@ int main(size_t argc, const char* argv[]) {
 
 	vkfw::init();
 
-	vkfw::Window window = vkfw::createWindow(1920, 900, "Hello Vulkan", {}, {});
+	vkfw::Window window = vkfw::createWindow(1280, 720, "Hello Vulkan", {}, {});
 	window.set<vkfw::Attribute::eResizable>(false);
 
 	renderer = new VulkanRenderer(window, RendererSettings{});

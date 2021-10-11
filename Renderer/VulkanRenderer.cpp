@@ -1,10 +1,10 @@
 #include <fstream>
 #include <chrono>
 
-#include <itertools/enumerate.hpp>
-#include <itertools/chain.hpp>
-#include <itertools/filter.hpp>
-#include <itertools/sorted.hpp>
+#include <cppitertools/enumerate.hpp>
+#include <cppitertools/chain.hpp>
+#include <cppitertools/filter.hpp>
+#include <cppitertools/sorted.hpp>
 
 #include "VulkanRenderer.h"
 
@@ -827,6 +827,27 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 
 	this->commandPool = this->device.createCommandPool(vk::CommandPoolCreateInfo{{vk::CommandPoolCreateFlagBits::eResetCommandBuffer}, this->graphicsQueueFamilyIndex});
 	this->allocator = vma::createAllocator(vma::AllocatorCreateInfo{ {}, this->physicalDevice, this->device });
+
+	std::array<vk::Format, 4> depthFormatCandidates = {
+		vk::Format::eD32Sfloat,
+		vk::Format::eD24UnormS8Uint,
+		vk::Format::eD16UnormS8Uint,
+		vk::Format::eD16Unorm
+	};
+
+	for (auto& format : depthFormatCandidates) {
+		try {
+			physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, {});
+			this->depthAttachmentFormat = format;
+			break;
+		}
+		catch (vk::FormatNotSupportedError e) {
+			continue;
+		}
+	}
+
+	if (this->depthAttachmentFormat == vk::Format::eUndefined)
+		throw std::runtime_error("No Supported Depth Attachment Formats Available");
 }
 
 void VulkanRenderer::createSwapchain() {
@@ -858,8 +879,8 @@ void VulkanRenderer::createSwapchain() {
 		this->swapchainImageViews.push_back(iv);
 	}
 
-	std::tie(this->depthImage, this->depthImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eD24UnormS8Uint, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
-	this->depthImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->depthImage, vk::ImageViewType::e2D, vk::Format::eD24UnormS8Uint, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } });
+	std::tie(this->depthImage, this->depthImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	this->depthImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->depthImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } });
 	
 	std::tie(this->colorImage, this->colorImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Unorm, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 	this->colorImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->colorImage, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Unorm, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } });
@@ -870,7 +891,7 @@ void VulkanRenderer::createSwapchain() {
 void VulkanRenderer::createRenderPass() {
 
 	vk::AttachmentDescription mainColorAttachment{ {}, vk::Format::eR8G8B8A8Unorm, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal };
-	vk::AttachmentDescription mainDepthAttachment{ {}, vk::Format::eD24UnormS8Uint, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+	vk::AttachmentDescription mainDepthAttachment{ {}, this->depthAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal };
 	vk::AttachmentDescription presentAttachment{ {}, this->swapchainFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR };
 	std::vector<vk::AttachmentDescription> attachmentDescriptions = { mainColorAttachment, mainDepthAttachment, presentAttachment };
 
@@ -1178,7 +1199,7 @@ void VulkanRenderer::createEnvPipeline() {
 
 
 void VulkanRenderer::createShadowMapRenderPass() {
-	vk::AttachmentDescription depthAttachment{ {}, vk::Format::eD24UnormS8Uint, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal };
+	vk::AttachmentDescription depthAttachment{ {}, this->depthAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal };
 	std::vector<vk::AttachmentDescription> attachmentDescriptions = { depthAttachment };
 
 	vk::AttachmentReference depthAttachmentRef{ 0, vk::ImageLayout::eDepthStencilAttachmentOptimal };
@@ -1252,7 +1273,7 @@ void VulkanRenderer::createShadowMapImage() {
 	//if (maxDim > 1u) mipLevels = std::floor(std::log2(maxDim)) + 1;
 
 	std::tie(this->shadowMapImage, this->shadowMapImageAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, vk::Format::eD24UnormS8Uint, vk::Extent3D{this->shadowMapResolution, this->shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->shadowMapResolution, this->shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
@@ -1260,7 +1281,7 @@ void VulkanRenderer::createShadowMapImage() {
 	this->shadowMapFramebuffers.reserve(this->lights.size() * 6);
 	for (const auto& [i, light] : iter::enumerate(this->lights)) {
 		for (unsigned short j = 0; j < 6; j++) {
-			vk::ImageView faceView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->shadowMapImage, vk::ImageViewType::e2D, vk::Format::eD24UnormS8Uint, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, static_cast<uint32_t>(i * 6 + j), 1 } });
+			vk::ImageView faceView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->shadowMapImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, static_cast<uint32_t>(i * 6 + j), 1 } });
 			this->shadowMapFaceImageViews.push_back(faceView);
 			std::vector<vk::ImageView> attachments = { faceView };
 			vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->shadowMapRenderPass, attachments, this->shadowMapResolution, this->shadowMapResolution, 1 });
@@ -1268,7 +1289,7 @@ void VulkanRenderer::createShadowMapImage() {
 		}
 	}
 
-	this->shadowMapCubeArrayImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->shadowMapImage, vk::ImageViewType::eCubeArray, vk::Format::eD24UnormS8Uint, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, mipLevels, 0, static_cast<uint32_t>(this->lights.size() * 6)} });
+	this->shadowMapCubeArrayImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->shadowMapImage, vk::ImageViewType::eCubeArray, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, mipLevels, 0, static_cast<uint32_t>(this->lights.size() * 6)} });
 
 	std::vector<vk::DescriptorImageInfo> imageInfos = { vk::DescriptorImageInfo{this->shadowMapSampler, this->shadowMapCubeArrayImageView, vk::ImageLayout::eShaderReadOnlyOptimal } };
 

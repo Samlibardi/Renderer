@@ -66,10 +66,13 @@ private:
 	vk::Queue graphicsQueue;
 	vma::Allocator allocator;
 
+	vk::Format swapchainFormat;
+	vk::Format colorAttachmentFormat = vk::Format::eR8G8B8A8Unorm;
+	vk::Format depthAttachmentFormat = vk::Format::eUndefined;
+
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::ImageView> swapchainImageViews;
 	vk::Extent2D swapchainExtent;
-	vk::Format swapchainFormat;
 	std::vector<vk::Framebuffer> swapchainFramebuffers;
 
 	vk::Image colorImage;
@@ -120,12 +123,12 @@ private:
 	vk::ImageView envMapImageView;
 	vma::Allocation envMapAllocation;
 
-	uint32_t envMapDiffuseResolution = 1024;
+	uint32_t envMapDiffuseResolution = 256u;
 	vk::Image envMapDiffuseImage;
 	vk::ImageView envMapDiffuseImageView;
 	vma::Allocation envMapDiffuseAllocation;
 
-	uint32_t envMapSpecularResolution = 1024;
+	uint32_t envMapSpecularResolution = 512u;
 	vk::Image envMapSpecularImage;
 	vk::ImageView envMapSpecularImageView;
 	vma::Allocation envMapSpecularAllocation;
