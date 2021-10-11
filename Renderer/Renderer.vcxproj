@@ -59,46 +59,66 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="conanbuildinfo.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="conanbuildinfo.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="conanbuildinfo.props" />
+    <Import Project="..\x64\Debug\.conan\conanbuildinfo.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\x64\Release\.conan\conanbuildinfo.props" />
+    <Import Project="conanbuildinfo.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
+    <IncludePath>
+    </IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
+    <IncludePath>
+    </IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
+    <IncludePath>
+    </IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <ExternalIncludePath>C:\Users\samli\source\glm\include;C:\Users\samli\source\CPPItertools\include;C:\Users\samli\source\tinygltf-2.5.0;C:\Users\samli\source\VulkanMemoryAllocator-Hpp-master;C:\VulkanSDK\1.2.189.2\Include;C:\GLFW\3.3.4\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
+    <IncludePath>
+    </IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;GLM_FORCE_DEPTH_ZERO_TO_ONE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DisableSpecificWarnings>%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalIncludeDirectories>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(ConanIncludeDirectories);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>"C:\VulkanSDK\1.2.189.2\Lib\vulkan-1.lib";"C:\GLFW\3.3.4\lib-vc2019\glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -107,31 +127,35 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;GLM_FORCE_DEPTH_ZERO_TO_ONE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(ConanIncludeDirectories);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>"C:\VulkanSDK\1.2.189.2\Lib\vulkan-1.lib";"C:\GLFW\3.3.4\lib-vc2019\glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;GLM_FORCE_DEPTH_ZERO_TO_ONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;GLM_FORCE_DEPTH_ZERO_TO_ONE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DisableSpecificWarnings>%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalIncludeDirectories>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(ConanIncludeDirectories);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>"C:\VulkanSDK\1.2.189.2\Lib\vulkan-1.lib";"C:\GLFW\3.3.4\lib-vc2019\glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -140,16 +164,18 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;GLM_FORCE_DEPTH_ZERO_TO_ONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;GLM_FORCE_DEPTH_ZERO_TO_ONE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(ConanIncludeDirectories);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>"C:\VulkanSDK\1.2.189.2\Lib\vulkan-1.lib";"C:\GLFW\3.3.4\lib-vc2019\glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

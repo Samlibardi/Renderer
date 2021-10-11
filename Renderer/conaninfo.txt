@@ -1,0 +1,50 @@
+[settings]
+    arch=x86_64
+    build_type=Release
+    compiler=Visual Studio
+    compiler.runtime=MD
+    compiler.version=16
+    os=Windows
+
+[requires]
+    cppitertools/2.Y.Z
+    glfw/3.Y.Z
+    glm/0.9.9.8
+    stb/cci.20210713
+    tinygltf/2.Y.Z
+
+[options]
+
+
+[full_settings]
+    arch=x86_64
+    arch_build=x86_64
+    build_type=Release
+    compiler=Visual Studio
+    compiler.runtime=MD
+    compiler.version=16
+    os=Windows
+    os_build=Windows
+
+[full_requires]
+    cppitertools/2.1:5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9
+    glfw/3.3.4:d3cffeefc8c8bcb6be8abdd182cb1b56fc81bacc
+    glm/0.9.9.8:5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9
+    opengl/system:5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9
+    stb/cci.20210713:5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9
+    tinygltf/2.5.0:5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9
+
+[full_options]
+    cppitertools:zip_longest=False
+    glfw:shared=False
+    glfw:vulkan_static=False
+    stb:with_deprecated=True
+    tinygltf:draco=False
+    tinygltf:stb_image=True
+    tinygltf:stb_image_write=True
+
+[recipe_hash]
+
+
+[env]
+

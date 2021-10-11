@@ -1,0 +1,38 @@
+{
+ "options": [
+  [
+   "cppitertools:zip_longest",
+   "False"
+  ],
+  [
+   "glfw:shared",
+   "False"
+  ],
+  [
+   "glfw:vulkan_static",
+   "False"
+  ],
+  [
+   "stb:with_deprecated",
+   "True"
+  ],
+  [
+   "tinygltf:draco",
+   "False"
+  ],
+  [
+   "tinygltf:stb_image",
+   "True"
+  ],
+  [
+   "tinygltf:stb_image_write",
+   "True"
+  ]
+ ],
+ "root": {
+  "name": null,
+  "version": null,
+  "user": null,
+  "channel": null
+ }
+}
