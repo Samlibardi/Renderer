@@ -16,6 +16,8 @@
 #include "Texture.h"
 #include "Camera.h"
 
+const uint32_t FRAMES_IN_FLIGHT = 2;
+
 typedef struct TextureInfo {
 	std::vector<byte> data = {0xff, 0xff, 0xff, 0xff};
 	uint32_t width = 1;
@@ -31,8 +33,10 @@ enum class MeshSortingMode {
 typedef struct RendererSettings {
 	bool hdrEnabled = true;
 
-	bool shadowsEnabled = true;
-	uint32_t shadowMapResolution = 512u;
+	bool dynamicShadowsEnabled = true;
+	uint32_t shadowMapResolution = 1024u;
+
+	bool vsync = false;
 };
 
 typedef struct CameraData {
@@ -97,7 +101,7 @@ private:
 	vma::Allocation depthImageAllocation;
 
 	vk::CommandPool commandPool;
-	std::vector<vk::CommandBuffer> commandBuffers;
+	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> commandBuffers;
 
 	vk::RenderPass renderPass;
 	vk::PipelineCache pipelineCache;
@@ -114,7 +118,7 @@ private:
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	vk::DescriptorSet globalDescriptorSet;
-	vk::DescriptorSet cameraDescriptorSet;
+	std::array<vk::DescriptorSet, FRAMES_IN_FLIGHT> cameraDescriptorSets;
 	vk::DescriptorSet tonemapDescriptorSet;
 
 	vk::Buffer vertexIndexBuffer;
@@ -122,9 +126,8 @@ private:
 	size_t vertexBufferOffset;
 	size_t indexBufferOffset;
 
-	vk::Buffer cameraBuffer;
-	vma::Allocation cameraBufferAllocation;
-	CameraData* cameraUBO;
+	std::array <vk::Buffer, FRAMES_IN_FLIGHT> cameraBuffers;
+	std::array <vma::Allocation, FRAMES_IN_FLIGHT> cameraBufferAllocations;
 
 	std::vector<PointLight> lights;
 	vk::Buffer lightsBuffer;
@@ -159,10 +162,10 @@ private:
 
 	std::vector<vk::ShaderModule> shaderModules{};
 
-	std::vector<vk::Semaphore> acquireImageSemaphores;
-	std::vector<vk::Semaphore> presentSemaphores;
-	std::vector<vk::Fence> frameFences;
-	vk::Semaphore shadowPassSemaphore;
+	std::array<vk::Fence, FRAMES_IN_FLIGHT> frameFences;
+	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> imageAcquiredSemaphores;
+	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> renderFinishedSemaphores;
+	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> shadowPassFinishedSemaphores;
 
 	std::thread renderThread;
 
@@ -180,7 +183,7 @@ private:
 
 	vk::RenderPass shadowMapRenderPass;
 	vk::RenderPass staticShadowMapRenderPass;
-	vk::CommandBuffer shadowMapCommandBuffer;
+	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> shadowPassCommandBuffers;
 	vk::PipelineLayout shadowMapPipelineLayout;
 	vk::Pipeline shadowMapPipeline;
 	vk::Sampler shadowMapSampler;
@@ -213,7 +216,7 @@ private:
 	void createShadowMapRenderPass();
 	void createStaticShadowMapRenderPass();
 	void createShadowMapPipeline();
-	void renderShadowMaps();
+	void renderShadowMaps(uint32_t frameIndex);
 
 	void makeDiffuseEnvMap();
 	std::tuple<vk::Pipeline, vk::PipelineLayout> createEnvMapDiffuseBakePipeline(vk::RenderPass renderPass);
@@ -223,9 +226,8 @@ private:
 	std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::array<std::array<vk::Framebuffer, 10>, 6>> createEnvMapSpecularBakeRenderPass();
 
 	void renderLoop();
-	void drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);
+	void drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
-	void stageTexture(vk::Image image, TextureInfo& textureInfo);
 };
 

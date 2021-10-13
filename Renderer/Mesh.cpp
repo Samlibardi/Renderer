@@ -75,14 +75,14 @@ void Mesh::calculateTangents()
 }
 
 void Mesh::calculateBarycenter() {
-	this->barycenter = glm::vec3(0.0f);
+	this->_barycenter = glm::vec3(0.0f);
 	for (const auto& v : this->vertices) {
-		this->barycenter += v.pos;
+		this->_barycenter += v.pos;
 	}
-	this->barycenter /= this->vertices.size();
+	this->_barycenter /= this->vertices.size();
 
-	glm::vec4 homoBc = glm::translate(this->translation) * glm::rotate(this->rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(this->rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(this->rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(this->scale) * glm::vec4(this->barycenter, 1.0f);
-	this->barycenter = glm::vec3(homoBc)/homoBc.w;
+	glm::vec4 homoBc = glm::translate(this->_translation) * glm::rotate(this->_rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(this->_rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(this->_rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(this->_scale) * glm::vec4(this->_barycenter, 1.0f);
+	this->_barycenter = glm::vec3(homoBc)/homoBc.w;
 }
 
 void Mesh::calculateBoundingBox() {
@@ -129,12 +129,33 @@ Mesh Mesh::boundingBoxAsMesh() const {
 		6, 7, 6,
 	};
 	m.isIndexed = true;
-	m.translation = this->translation;
-	m.rotation = this->rotation;
-	m.scale = this->scale;
+	m.setTransform(this->_translation, this->_rotation, this->_scale);
 	m.calculateBarycenter();
 
 	m.boundingBox = this->boundingBox;
 	
 	return m;
+}
+
+void Mesh::setAnimationTime(float t) {
+	if (this->isStatic)
+		return;
+
+	glm::vec3 oldTranslation = this->_translation;
+
+	this->_translation = this->translationAnimation.valueAt(t);
+	this->_rotation = this->rotationAnimation.valueAt(t);
+	this->_scale = this->scaleAnimation.valueAt(t);
+
+	this->_barycenter += this->_translation - oldTranslation;
+	
+	this->recalculateModel();
+}
+
+glm::mat4 Mesh::modelMatrix() {
+	return _model;
+}
+
+void Mesh::recalculateModel() {
+	this->_model = glm::translate(this->_translation) * glm::rotate(this->_rotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(this->_rotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(this->_rotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(this->_scale);
 }

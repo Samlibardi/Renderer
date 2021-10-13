@@ -63,15 +63,19 @@ void openGltf(const std::string& filename) {
 				Mesh loadedMesh{};
 				bool meshHasTangents = false;
 
+				glm::vec3 translation{ 0.0f }, rotation{ 0.0f }, scale{ 1.0f };
+
 				if (!node.translation.empty()) {
-					loadedMesh.translation = glm::vec3{ node.translation[0], node.translation[1], node.translation[2] };
+					translation = glm::vec3{ node.translation[0], node.translation[1], node.translation[2] };
 				}
 				if (!node.rotation.empty()) {
-					loadedMesh.rotation = glm::vec3{ node.rotation[0], node.rotation[1], node.rotation[2] };
+					rotation = glm::vec3{ node.rotation[0], node.rotation[1], node.rotation[2] };
 				}
 				if (!node.scale.empty()) {
-					loadedMesh.scale = glm::vec3{ node.scale[0], node.scale[1], node.scale[2] };
+					scale = glm::vec3{ node.scale[0], node.scale[1], node.scale[2] };
 				}
+
+				loadedMesh.setTransform(translation, rotation, scale);
 
 				std::vector<glm::vec3> positions = readAttribute<3>(gltfModel, primitive, "POSITION");
 				loadedMesh.vertices.reserve(positions.size());
@@ -260,7 +264,7 @@ int main(size_t argc, const char* argv[]) {
 	};
 
 	while (!window.shouldClose()) {
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		std::this_thread::sleep_for(std::chrono::milliseconds(6));
 		vkfw::pollEvents();
 
 		auto newFrameTime = std::chrono::high_resolution_clock::now();

@@ -55,6 +55,8 @@ public:
 	vk::ImageView imageView() { return this->core->_imageView; };
 	vma::Allocation imageAllocation() { return this->core->_imageAllocation; };
 
+	static void clearCache();
+
 private:
 	inline static std::map<std::string, std::shared_ptr<TextureCore>> textureCache{};
 	std::string path;
