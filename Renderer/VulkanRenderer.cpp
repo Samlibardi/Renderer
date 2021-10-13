@@ -849,7 +849,7 @@ void VulkanRenderer::renderLoop() {
 		cb.end();
 
 		std::array<vk::Semaphore, 2> awaitSemaphores = { this->imageAcquiredSemaphores[frameIndex], this->shadowPassFinishedSemaphores[frameIndex] };
-		std::array<vk::PipelineStageFlags, 2> waitStageFlags = { vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eFragmentShader };
+		std::array<vk::PipelineStageFlags, 2> waitStageFlags = { vk::PipelineStageFlagBits::eEarlyFragmentTests, vk::PipelineStageFlagBits::eFragmentShader };
 		this->graphicsQueue.submit(vk::SubmitInfo{ awaitSemaphores, waitStageFlags, this->commandBuffers[imageIndex], this->renderFinishedSemaphores[frameIndex] }, this->frameFences[frameIndex]);
 		this->graphicsQueue.presentKHR(vk::PresentInfoKHR(this->renderFinishedSemaphores[frameIndex], this->swapchain, imageIndex));
 
@@ -964,7 +964,7 @@ void VulkanRenderer::createSwapchain() {
 		}
 	}
 
-	vk::SwapchainCreateInfoKHR createInfo{ {}, this->surface, surfaceCap.minImageCount, selectedFormat.format, selectedFormat.colorSpace, surfaceCap.currentExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {}, vk::SurfaceTransformFlagBitsKHR::eIdentity, vk::CompositeAlphaFlagBitsKHR::eOpaque, this->settings.vsync ? vk::PresentModeKHR::eFifo : vk::PresentModeKHR::eImmediate };
+	vk::SwapchainCreateInfoKHR createInfo{ {}, this->surface, std::max(surfaceCap.minImageCount, FRAMES_IN_FLIGHT), selectedFormat.format, selectedFormat.colorSpace, surfaceCap.currentExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {}, vk::SurfaceTransformFlagBitsKHR::eIdentity, vk::CompositeAlphaFlagBitsKHR::eOpaque, this->settings.vsync ? vk::PresentModeKHR::eFifo : vk::PresentModeKHR::eImmediate };
 	this->swapchain = this->device.createSwapchainKHR(createInfo);
 	this->swapchainExtent = surfaceCap.currentExtent;
 	this->swapchainFormat = selectedFormat.format;
@@ -1004,7 +1004,7 @@ void VulkanRenderer::createRenderPass() {
 	std::vector<vk::SubpassDependency> subpassDependencies {
 		vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, vk::AccessFlagBits::eColorAttachmentWrite},
 		vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests,vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests, vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite},
-		vk::SubpassDependency{0, 1, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentRead, vk::AccessFlagBits::eColorAttachmentWrite },
+		vk::SubpassDependency{0, 1, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eColorAttachmentWrite, vk::AccessFlagBits::eInputAttachmentRead },
 	};
 
 	std::vector<vk::SubpassDescription> subpasses = { mainSubpass, tonemapSubpass };
