@@ -1,9 +1,20 @@
 #define NOMINMAX
 
+#include <memory>
 #include <filesystem>
 #include <iostream>
+#include <set>
 
 #include <glm/glm.hpp>
+
+#define VK_USE_PLATFORM_WIN32_KHR
+#include <vulkan/vulkan.hpp>
+
+#include <vkfw/vkfw.hpp>
+
+#include <imgui.h>
+#include "bindings/imgui_impl_glfw.h"
+#include "bindings/imgui_impl_vulkan.h"
 
 #include "VulkanRenderer.h"
 
@@ -16,7 +27,9 @@
 
 #include "Mesh.h"
 
-VulkanRenderer* renderer = nullptr;
+typedef unsigned char byte;
+
+std::unique_ptr<VulkanRenderer> renderer = nullptr;
 
 template<uint32_t N> std::vector<glm::vec<N, float>> readAttribute(const tinygltf::Model& model, const tinygltf::Primitive& primitive, const char* attributeName) {
 	const auto& accessor = model.accessors[primitive.attributes.at(attributeName)];
@@ -301,7 +314,24 @@ int main(size_t argc, const char* argv[]) {
 	vkfw::Window window = vkfw::createWindow(1280, 720, "Hello Vulkan", {}, {});
 	window.set<vkfw::Attribute::eResizable>(false);
 
-	renderer = new VulkanRenderer(window, RendererSettings{});
+	vk::ApplicationInfo appInfo{ "Sam's Vulkan Renderer", 1, "Custom Engine", 1, VK_API_VERSION_1_1 };
+#ifdef _DEBUG
+	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
+#else 
+	const std::vector<const char*> validationLayers = { };
+#endif
+	std::vector<const char*> vulkanExtensions;
+	{
+		uint32_t c;
+		const char** v = vkfw::getRequiredInstanceExtensions(&c);
+		vulkanExtensions.resize(c);
+		memcpy(vulkanExtensions.data(), v, sizeof(char**) * c);
+	}
+
+	vk::Instance vulkanInstance = vk::createInstance(vk::InstanceCreateInfo{ {}, &appInfo, validationLayers, vulkanExtensions });
+	vk::SurfaceKHR surface = vkfw::createWindowSurface(vulkanInstance, window);
+
+	renderer = std::make_unique<VulkanRenderer>(vulkanInstance, surface, RendererSettings{});
 
 	std::array<TextureInfo, 6> cubeFaces = {
 		loadTexture("./environment/px.png"),
@@ -338,15 +368,22 @@ int main(size_t argc, const char* argv[]) {
 	const float panSpeed = 3.0f / std::min(window.getHeight(), window.getWidth());
 	const float tiltSpeed = 0.001f;
 
-	std::map<vkfw::Key, boolean> pressedKeys{ {vkfw::Key::eW, false}, {vkfw::Key::eA, false}, {vkfw::Key::eS, false}, {vkfw::Key::eD, false}, };
-	std::map<vkfw::MouseButton, boolean> pressedMouseButtons{ {vkfw::MouseButton::eLeft, false}, {vkfw::MouseButton::eMiddle, false}, {vkfw::MouseButton::eRight, false} };
+	std::set<vkfw::Key> pressedKeys{};
+	std::set<vkfw::MouseButton> pressedMouseButtons{};
 
-	window.callbacks()->on_key = [&pressedKeys](vkfw::Window const&, vkfw::Key key, int32_t, vkfw::KeyAction action, vkfw::ModifierKeyFlags) {
+	window.callbacks()->on_key = [&pressedKeys](vkfw::Window const&, vkfw::Key key, int32_t, vkfw::KeyAction action, vkfw::ModifierKeyFlags modifiers) {
 		if (action == vkfw::KeyAction::ePress) {
-			pressedKeys[key] = true;
+			pressedKeys.insert(key);
 		}
 		if (action == vkfw::KeyAction::eRelease) {
-			pressedKeys[key] = false;
+			pressedKeys.erase(key);
+		}
+
+		if (((key == vkfw::Key::eEqual && modifiers & vkfw::ModifierKeyBits::eShift) || key == vkfw::Key::eKeyPad_Add) && (action == vkfw::KeyAction::ePress || action == vkfw::KeyAction::eRepeat)) {
+			renderer->settings().exposure += 1;
+		}
+		if ((key == vkfw::Key::eMinus || key == vkfw::Key::eKeyPad_Subtract) && (action == vkfw::KeyAction::ePress || action == vkfw::KeyAction::eRepeat)) {
+			renderer->settings().exposure -= 1;
 		}
 	};
 
@@ -354,11 +391,11 @@ int main(size_t argc, const char* argv[]) {
 
 	window.callbacks()->on_mouse_button = [&pressedMouseButtons, &lastCursorPos](vkfw::Window const& window, vkfw::MouseButton button, vkfw::MouseButtonAction action, vkfw::ModifierKeyFlags modifiers) {
 		if (action == vkfw::MouseButtonAction::ePress) {
-			pressedMouseButtons[button] = true;
+			pressedMouseButtons.insert(button);
 			lastCursorPos = { window.getCursorPosX(), window.getCursorPosY() };
 		}
 		if (action == vkfw::MouseButtonAction::eRelease) {
-			pressedMouseButtons[button] = false;
+			pressedMouseButtons.erase(button);
 		}
 	};
 	
@@ -375,7 +412,7 @@ int main(size_t argc, const char* argv[]) {
 		runningTime += deltaTime;
 		frameTime = newFrameTime;
 
-		if (pressedMouseButtons[vkfw::MouseButton::eRight]) {
+		if (pressedMouseButtons.count(vkfw::MouseButton::eRight)) {
 			glm::vec2 cursorPos = { window.getCursorPosX(), window.getCursorPosY() };
 			auto cursorDelta = cursorPos - lastCursorPos;
 			cursorDelta.y = -cursorDelta.y;
@@ -385,13 +422,13 @@ int main(size_t argc, const char* argv[]) {
 		}
 		else {
 			glm::vec3 translation{ 0.0f };
-			if (pressedKeys[vkfw::Key::eW])
+			if (pressedKeys.count(vkfw::Key::eW))
 				translation += glm::vec3(0.0f, 0.0f, -1.0f);
-			if (pressedKeys[vkfw::Key::eA])
+			if (pressedKeys.count(vkfw::Key::eA))
 				translation += glm::vec3(-1.0f, 0.0f, 0.0f);
-			if (pressedKeys[vkfw::Key::eS])
+			if (pressedKeys.count(vkfw::Key::eS))
 				translation += glm::vec3(0.0f, 0.0f, 1.0f);
-			if (pressedKeys[vkfw::Key::eD])
+			if (pressedKeys.count(vkfw::Key::eD))
 				translation += glm::vec3(1.0f, 0.0f, 0.0f);
 
 			float translationMag = glm::length(translation);
@@ -400,16 +437,13 @@ int main(size_t argc, const char* argv[]) {
 				renderer->camera().move(static_cast<float>(moveSpeed * deltaTime) * translation / std::min(translationMag, 1.0f));
 		}
 
-		if (pressedMouseButtons[vkfw::MouseButton::eMiddle]) {
+		if (pressedMouseButtons.count(vkfw::MouseButton::eMiddle)) {
 			glm::vec2 cursorPos = { window.getCursorPosX(), window.getCursorPosY() };
 			auto cursorDelta = cursorPos - lastCursorPos;
 			lastCursorPos = cursorPos;
 
 			renderer->camera().tilt(-tiltSpeed * cursorDelta);
 		}
-
-
 	}
-
-	delete renderer;
+	vkfw::terminate();
 }

@@ -73,8 +73,8 @@ void VulkanRenderer::createShadowMapPipeline() {
 
 	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo{ {}, vk::PrimitiveTopology::eTriangleList, false };
 
-	std::vector<vk::Viewport> viewports = { vk::Viewport{ 0.0f, 0.0f, static_cast<float>(this->settings.shadowMapResolution), static_cast<float>(this->settings.shadowMapResolution), 0.0f, 1.0f } };
-	std::vector<vk::Rect2D> scissors = { vk::Rect2D({0, 0}, vk::Extent2D{ this->settings.shadowMapResolution, this->settings.shadowMapResolution}) };
+	std::vector<vk::Viewport> viewports = { vk::Viewport{ 0.0f, 0.0f, static_cast<float>(this->_settings.shadowMapResolution), static_cast<float>(this->_settings.shadowMapResolution), 0.0f, 1.0f } };
+	std::vector<vk::Rect2D> scissors = { vk::Rect2D({0, 0}, vk::Extent2D{ this->_settings.shadowMapResolution, this->_settings.shadowMapResolution}) };
 
 	vk::PipelineViewportStateCreateInfo viewportInfo{ {}, viewports, scissors };
 
@@ -105,11 +105,11 @@ void VulkanRenderer::createShadowMapPipeline() {
 
 void VulkanRenderer::createShadowMapImage() {
 	uint32_t mipLevels = 1u;
-	uint32_t maxDim = this->settings.shadowMapResolution;
+	uint32_t maxDim = this->_settings.shadowMapResolution;
 	//if (maxDim > 1u) mipLevels = std::floor(std::log2(maxDim)) + 1;
 
 	std::tie(this->shadowMapImage, this->shadowMapImageAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.shadowMapResolution, this->_settings.shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
@@ -120,7 +120,7 @@ void VulkanRenderer::createShadowMapImage() {
 			vk::ImageView faceView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->shadowMapImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, static_cast<uint32_t>(i * 6 + j), 1 } });
 			this->shadowMapFaceImageViews.push_back(faceView);
 			std::vector<vk::ImageView> attachments = { faceView };
-			vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->shadowMapRenderPass, attachments, this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1 });
+			vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->shadowMapRenderPass, attachments, this->_settings.shadowMapResolution, this->_settings.shadowMapResolution, 1 });
 			this->shadowMapFramebuffers.push_back(fb);
 		}
 	}
@@ -137,11 +137,11 @@ void VulkanRenderer::createShadowMapImage() {
 
 void VulkanRenderer::createStaticShadowMapImage() {
 	uint32_t mipLevels = 1u;
-	uint32_t maxDim = this->settings.shadowMapResolution;
+	uint32_t maxDim = this->_settings.shadowMapResolution;
 	//if (maxDim > 1u) mipLevels = std::floor(std::log2(maxDim)) + 1;
 
 	std::tie(this->staticShadowMapImage, this->staticShadowMapImageAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.shadowMapResolution, this->_settings.shadowMapResolution, 1}, mipLevels, static_cast<uint32_t>(this->lights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
@@ -152,7 +152,7 @@ void VulkanRenderer::createStaticShadowMapImage() {
 			vk::ImageView faceView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->staticShadowMapImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, static_cast<uint32_t>(i * 6 + j), 1 } });
 			this->staticShadowMapFaceImageViews.push_back(faceView);
 			std::vector<vk::ImageView> attachments = { faceView };
-			vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->staticShadowMapRenderPass, attachments, this->settings.shadowMapResolution, this->settings.shadowMapResolution, 1 });
+			vk::Framebuffer fb = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->staticShadowMapRenderPass, attachments, this->_settings.shadowMapResolution, this->_settings.shadowMapResolution, 1 });
 			this->staticShadowMapFramebuffers.push_back(fb);
 		}
 	}
@@ -191,7 +191,7 @@ void VulkanRenderer::renderShadowMaps(uint32_t frameIndex) {
 			sortedMeshes.push_back(el);
 
 		for (unsigned short j = 0; j < 6; j++) {
-			cb.beginRenderPass(vk::RenderPassBeginInfo{ this->staticShadowMapRenderPass, this->staticShadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->settings.shadowMapResolution, this->settings.shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+			cb.beginRenderPass(vk::RenderPassBeginInfo{ this->staticShadowMapRenderPass, this->staticShadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->_settings.shadowMapResolution, this->_settings.shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
 
 			glm::mat4 view = views[j] * glm::translate(-cameraPos);
 			glm::mat4 viewproj = proj * view;
@@ -222,10 +222,8 @@ void VulkanRenderer::renderShadowMaps(uint32_t frameIndex) {
 		}
 	}
 
-	cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, this->graphicsQueueFamilyIndex, this->graphicsQueueFamilyIndex, this->shadowMapImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS } });
-	cb.blitImage(this->staticShadowMapImage, vk::ImageLayout::eTransferSrcOptimal, this->shadowMapImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, 0, static_cast<uint32_t>(this->lights.size() * 6) }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->settings.shadowMapResolution), static_cast<int32_t>(this->settings.shadowMapResolution), 1 } }, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, 0, static_cast<uint32_t>(this->lights.size() * 6) }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->settings.shadowMapResolution), static_cast<int32_t>(this->settings.shadowMapResolution), 1 } }}, vk::Filter::eNearest);
-
-	// cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eEarlyFragmentTests, vk::DependencyFlagBits::eByRegion, {}, {}, {});
+	cb.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eShaderRead, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, this->graphicsQueueFamilyIndex, this->graphicsQueueFamilyIndex, this->shadowMapImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS } });
+	cb.blitImage(this->staticShadowMapImage, vk::ImageLayout::eTransferSrcOptimal, this->shadowMapImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, 0, static_cast<uint32_t>(this->lights.size() * 6) }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.shadowMapResolution), static_cast<int32_t>(this->_settings.shadowMapResolution), 1 } }, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, 0, static_cast<uint32_t>(this->lights.size() * 6) }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.shadowMapResolution), static_cast<int32_t>(this->_settings.shadowMapResolution), 1 } }}, vk::Filter::eNearest);
 
 	for (const auto& [i, light] : iter::enumerate(this->lights)) {
 		const glm::vec3 cameraPos = light.point;
@@ -249,9 +247,8 @@ void VulkanRenderer::renderShadowMaps(uint32_t frameIndex) {
 			for (auto& mesh : culledMeshes)
 				nonCulledMeshes++;
 
-
-			if (this->settings.dynamicShadowsEnabled && nonCulledMeshes > 0) {
-				cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->shadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->settings.shadowMapResolution, this->settings.shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+			if (this->_settings.dynamicShadowsEnabled && nonCulledMeshes > 0) {
+				cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->shadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->_settings.shadowMapResolution, this->_settings.shadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
 				for (auto& mesh : culledMeshes) {
 					const glm::mat4 model = mesh->node->modelMatrix();
 					const glm::mat4 modelviewproj = viewproj * model;

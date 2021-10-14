@@ -16,27 +16,7 @@
 
 #include <iostream>
 
-VulkanRenderer::VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings) : window(window), settings(rendererSettings) {
-
-	vk::ApplicationInfo appInfo{"Custom Vulkan Renderer", 1, "Custom Engine", 1, VK_API_VERSION_1_1};
-#ifdef _DEBUG
-	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-#else 
-	const std::vector<const char*> validationLayers = { };
-#endif
-	std::vector<const char*> vulkanExtensions;
-	{
-		uint32_t c;
-		const char** v = vkfw::getRequiredInstanceExtensions(&c);
-		vulkanExtensions.resize(c);
-		memcpy(vulkanExtensions.data(), v, sizeof(char**) * c);
-	}
-#ifdef _DEBUG
-	vulkanExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#endif
-
-	this->vulkanInstance = vk::createInstance(vk::InstanceCreateInfo{{}, &appInfo, validationLayers, vulkanExtensions});
-	this->surface = vkfw::createWindowSurface(this->vulkanInstance, this->window);
+VulkanRenderer::VulkanRenderer(const vk::Instance vulkanInstance, const vk::SurfaceKHR surface, const RendererSettings& rendererSettings) : vulkanInstance(vulkanInstance), surface(surface), _settings(rendererSettings) {
 
 	std::vector<vk::PhysicalDevice> availableDevices = this->vulkanInstance.enumeratePhysicalDevices();
 	if (availableDevices.empty()) throw std::runtime_error("No devices with Vulkan support are available");
@@ -148,13 +128,14 @@ VulkanRenderer::~VulkanRenderer() {
 	this->allocator.destroyImage(this->colorImage, this->colorImageAllocation);
 	this->allocator.destroyImage(this->depthImage, this->depthImageAllocation);
 
-	Texture::clearCache();
 	this->meshes = {};
 	this->opaqueMeshes = {};
+	this->nonOpaqueMeshes = {};
 	this->alphaBlendMeshes = {};
 	this->alphaMaskMeshes = {};
 	this->dynamicMeshes = {};
 	this->staticMeshes = {};
+	this->boundingBoxMeshes = {};
 	
 	this->device.destroyDescriptorSetLayout(this->globalDescriptorSetLayout);
 	this->device.destroyDescriptorSetLayout(this->pbrDescriptorSetLayout);
@@ -173,7 +154,6 @@ VulkanRenderer::~VulkanRenderer() {
 	this->device.destroy();
 	this->vulkanInstance.destroySurfaceKHR(this->surface);
 	this->vulkanInstance.destroy();
-	vkfw::terminate();
 }
 
 std::tuple<vk::Image, vk::ImageView, vma::Allocation> VulkanRenderer::createImageFromTextureInfo(TextureInfo& textureInfo) {
@@ -443,7 +423,7 @@ void VulkanRenderer::createSwapchain() {
 	auto surfaceFormats = this->physicalDevice.getSurfaceFormatsKHR(this->surface);
 
 	vk::SurfaceFormatKHR selectedFormat = surfaceFormats[0];
-	if (this->settings.hdrEnabled) {
+	if (this->_settings.hdrEnabled) {
 		for (auto& format : surfaceFormats) {
 			if (format.colorSpace == vk::ColorSpaceKHR::eHdr10St2084EXT) {
 				selectedFormat = format;
@@ -455,7 +435,7 @@ void VulkanRenderer::createSwapchain() {
 		}
 	}
 
-	vk::SwapchainCreateInfoKHR createInfo{ {}, this->surface, std::max(surfaceCap.minImageCount, FRAMES_IN_FLIGHT), selectedFormat.format, selectedFormat.colorSpace, surfaceCap.currentExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {}, vk::SurfaceTransformFlagBitsKHR::eIdentity, vk::CompositeAlphaFlagBitsKHR::eOpaque, this->settings.vsync ? vk::PresentModeKHR::eFifo : vk::PresentModeKHR::eImmediate };
+	vk::SwapchainCreateInfoKHR createInfo{ {}, this->surface, std::max(surfaceCap.minImageCount, FRAMES_IN_FLIGHT), selectedFormat.format, selectedFormat.colorSpace, surfaceCap.currentExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {}, vk::SurfaceTransformFlagBitsKHR::eIdentity, vk::CompositeAlphaFlagBitsKHR::eOpaque, this->_settings.vsync ? vk::PresentModeKHR::eFifo : vk::PresentModeKHR::eImmediate };
 	this->swapchain = this->device.createSwapchainKHR(createInfo);
 	this->swapchainExtent = surfaceCap.currentExtent;
 	this->swapchainFormat = selectedFormat.format;
@@ -943,7 +923,7 @@ void VulkanRenderer::renderLoop() {
 		cb.nextSubpass(vk::SubpassContents::eInline);
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->tonemapPipeline);
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->tonemapPipelineLayout, 0, this->tonemapDescriptorSet, {});
-		cb.pushConstants<float>(this->tonemapPipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, { 1.0f, 2.2f });
+		cb.pushConstants<float>(this->tonemapPipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, { this->_settings.exposure, this->_settings.gamma });
 		cb.draw(6, 1, 0, 0);
 
 		cb.endRenderPass();

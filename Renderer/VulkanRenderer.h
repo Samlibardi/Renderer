@@ -3,9 +3,7 @@
 #include <tuple>
 #include <array>
 
-#define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.hpp>
-#include <vkfw/vkfw.hpp>
 
 #include <glm/gtx/transform.hpp>
 
@@ -15,6 +13,8 @@
 #include "PointLight.h"
 #include "Texture.h"
 #include "Camera.h"
+
+typedef unsigned char byte;
 
 const uint32_t FRAMES_IN_FLIGHT = 2;
 
@@ -37,6 +37,9 @@ typedef struct RendererSettings {
 	uint32_t shadowMapResolution = 1024u;
 
 	bool vsync = false;
+
+	float exposure = 0.0f;
+	float gamma = 2.2f;
 };
 
 typedef struct CameraData {
@@ -55,7 +58,7 @@ typedef struct PointLightData {
 class VulkanRenderer
 {
 public:
-	VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings);
+	VulkanRenderer(const vk::Instance vulkanInstance, const vk::SurfaceKHR surface, const RendererSettings& rendererSettings);
 	~VulkanRenderer();
 	void start();
 
@@ -66,14 +69,15 @@ public:
 
 	Camera& camera() { return this->_camera; };
 
+	RendererSettings& const settings() { return this->_settings; }
+
 private:
 	bool running = false;
 
-	RendererSettings settings;
+	RendererSettings _settings;
 	
 	Camera _camera{ { 0.0f, 0.0f, 0.0f }, {0.0f, 0.0f, 0.0f} };
 
-	vkfw::Window window;
 	vk::Instance vulkanInstance;
 	vk::SurfaceKHR surface;
 
