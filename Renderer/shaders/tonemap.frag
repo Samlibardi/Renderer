@@ -34,7 +34,7 @@ void main() {
 
     color = tone(color)/tone(linWhitePoint);
 
-    color = vec3(1.0) - exp(-color * exposure);
+    color = vec3(1.0) - exp(-color * pow(2.0f, exposure));
     color = pow(color, vec3(1.0 / gamma));
 
     outColor = vec4(color, 1.0f);
