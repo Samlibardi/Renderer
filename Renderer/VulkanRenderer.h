@@ -59,6 +59,7 @@ public:
 	~VulkanRenderer();
 	void start();
 
+	void setRootNodes(std::vector<std::shared_ptr<Node>> nodes);
 	void setMeshes(const std::vector<Mesh>& meshes);
 	void setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos);
 	void setLights(const std::vector<PointLight>& lights);
@@ -180,6 +181,8 @@ private:
 	std::vector<std::shared_ptr<Mesh>> dynamicMeshes;
 
 	std::vector<std::shared_ptr<Mesh>> meshes;
+
+	std::vector<std::shared_ptr<Node>> rootNodes;
 
 	vk::RenderPass shadowMapRenderPass;
 	vk::RenderPass staticShadowMapRenderPass;

@@ -14,6 +14,18 @@ template<typename key_t, typename elem_t> struct InterpolationTreeNode {
 		std::shared_ptr<InterpolationTreeNode<key_t, elem_t>> prev = nullptr,
 		std::shared_ptr<InterpolationTreeNode<key_t, elem_t>> next = nullptr
 	) : key(key), value(value), prev(prev), next(next) {};
+	InterpolationTreeNode(const InterpolationTreeNode& other) :
+		key(other.key),
+		value(other.value),
+		prev(std::make_shared<InterpolationTreeNode<key_t, elem_t>>(*other.prev)),
+		next(std::make_shared<InterpolationTreeNode<key_t, elem_t>>(*other.next))
+	{};
+	InterpolationTreeNode(InterpolationTreeNode&& other) :
+		key(std::move(other.key)),
+		value(std::move(other.value)),
+		prev(std::move(other.prev)),
+		next(std::move(other.next))
+	{};
 
 	key_t key;
 	elem_t value;
@@ -23,22 +35,19 @@ template<typename key_t, typename elem_t> struct InterpolationTreeNode {
 
 template<typename key_t, typename elem_t> class InterpolationTree {
 public:
+	template<typename inputIt>InterpolationTree(const inputIt begin, const inputIt end);
 	InterpolationTree(const std::initializer_list<std::pair<key_t, elem_t>> elems);
-	InterpolationTree() {};
-	InterpolationTree(const InterpolationTree<key_t, elem_t>& other) {};
-	InterpolationTree(InterpolationTree<key_t, elem_t>&& other) {};
+	InterpolationTree(const InterpolationTree& other) : root(std::make_unique<InterpolationTreeNode<key_t, elem_t>>(*other.root)), size(other.size) {};
+	InterpolationTree(InterpolationTree&& other) : root(std::move(other.root)), size(other.size) {};
 
-	void push_back(std::pair<key_t, elem_t> val);
-	//void push_back(key_t key, elem_t elem);
-	//void clear();
 	std::pair<std::pair<key_t, elem_t>, std::pair<key_t, elem_t>> at(key_t key);
 private:
 	std::unique_ptr<InterpolationTreeNode<key_t, elem_t>> root = nullptr;
 	size_t size = 0;
 };
 
-template<typename key_t, typename elem_t>
-std::unique_ptr<InterpolationTreeNode<key_t, elem_t>> buildSubtree(const typename std::vector<std::pair<key_t, elem_t>>::iterator begin, const typename std::vector<std::pair<key_t, elem_t>>::iterator end, const size_t size) {
+template<typename key_t, typename elem_t, typename inputIt>
+std::unique_ptr<InterpolationTreeNode<key_t, elem_t>> buildSubtree(const inputIt begin, const inputIt end, const size_t size) {
 	if (size == 0)
 		return nullptr;
 	else if (size == 1)
@@ -53,20 +62,25 @@ std::unique_ptr<InterpolationTreeNode<key_t, elem_t>> buildSubtree(const typenam
 		return std::make_unique<InterpolationTreeNode<key_t, elem_t>>((begin + 1)->first, (begin + 1)->second, left, right);
 	}
 	else {
-		typename std::vector<std::pair<key_t, elem_t>>::iterator midpoint = begin + size / 2;
+		inputIt midpoint = begin + size / 2;
 		std::shared_ptr<InterpolationTreeNode<key_t, elem_t>> left = buildSubtree<key_t, elem_t>(begin, midpoint, 1 + size / 2);
 		std::shared_ptr<InterpolationTreeNode<key_t, elem_t>> right = buildSubtree<key_t, elem_t>(midpoint + 1, end, size - (1 + size / 2));
 		return std::make_unique<InterpolationTreeNode<key_t, elem_t>>(midpoint->first, midpoint->second, left, right);
 	}
 }
 
+template<typename key_t, typename elem_t> template<typename inputIt>
+InterpolationTree<typename key_t, typename elem_t>::InterpolationTree(const inputIt begin, const inputIt end) {
+	size_t size = std::distance(begin, end);
+	this->root = buildSubtree<key_t, elem_t>(begin, end, size);
+	this->size = size;
+}
+
 template<typename key_t, typename elem_t>
 InterpolationTree<key_t, elem_t>::InterpolationTree(std::initializer_list<std::pair<key_t, elem_t>> elems)
 {
-	std::vector<std::pair<key_t, elem_t>> elemsVec = elems;
-	std::sort(elemsVec.begin(), elemsVec.end(), [](std::pair<key_t, elem_t> a, std::pair<key_t, elem_t> b) { return a.first < b.first; });
-	this->root = buildSubtree<key_t, elem_t>(elemsVec.begin(), elemsVec.end(), elemsVec.size());
-	this->size = elemsVec.size();
+	this->root = buildSubtree<key_t, elem_t>(elems.begin(), elems.end(), elems.size());
+	this->size = elems.size();
 }
 
 template<typename key_t, typename elem_t>

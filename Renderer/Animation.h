@@ -3,7 +3,12 @@
 
 #include <glm/common.hpp>
 #include <glm/gtx/spline.hpp>
+#include <glm/gtc/quaternion.hpp>
+
+#include <cppitertools/enumerate.hpp>
+
 #include "InterpolationTree.h"
+
 
 enum class AnimationInterpolationCurve {
 	eLinear,
@@ -26,15 +31,37 @@ public:
 		std::vector<T> keyframeValues,
 		AnimationInterpolationCurve interpolation = AnimationInterpolationCurve::eLinear,
 		AnimationRepeatMode repeat = AnimationRepeatMode::eClamp
-	) : keyframeTimes(keyframeTimes), keyframes(keyframeValues), interpolationCurve(interpolation), repeatMode(repeat) {};
+	) : keyframeTimes(keyframeTimes), keyframes(keyframeValues), interpolationCurve(interpolation), repeatMode(repeat) {
+		assert(keyframeTimes.size() > 0);
+		assert(keyframeValues.size() == keyframeTimes.size());
+
+		std::vector<std::pair<float, size_t>> keyframeIndexes{};
+		for (auto&& [i, t] : iter::enumerate(keyframeTimes) ) {
+			keyframeIndexes.emplace_back(std::pair{ t, i });
+		}
+
+		this->keyframeIndexTree = std::make_unique<InterpolationTree<float, size_t>>(keyframeIndexes.begin(), keyframeIndexes.end());
+	};
+	Animation(const Animation<T>& other) : 
+		keyframeTimes(other.keyframeTimes),
+		keyframes(other.keyframes),
+		keyframeIndexTree(std::make_unique<InterpolationTree<float, size_t>>(*other.keyframeIndexTree)),
+		interpolationCurve(other.interpolationCurve),
+		repeatMode(other.repeatMode) {};
+	Animation(Animation<T>&& other) :
+		keyframeTimes(std::move(other.keyframeTimes)),
+		keyframes(std::move(other.keyframes)),
+		keyframeIndexTree(std::move(other.keyframeIndexTree)),
+		interpolationCurve(other.interpolationCurve),
+		repeatMode(other.repeatMode) {};
 
 	T valueAt(float t);
 private:
 	AnimationInterpolationCurve interpolationCurve = AnimationInterpolationCurve::eLinear;
 	AnimationRepeatMode repeatMode = AnimationRepeatMode::eClamp;
-	InterpolationTree<float, size_t> keyframeIndexTree{};
-	std::vector<float> keyframeTimes{};
-	std::vector<T> keyframes{};
+	std::unique_ptr<InterpolationTree<float, size_t>> keyframeIndexTree;
+	std::vector<float> keyframeTimes;
+	std::vector<T> keyframes;
 };
 
 template<typename T>
@@ -56,7 +83,7 @@ T Animation<T>::valueAt(float t)
 		t = (static_cast<int>(nloops) % 2) ? this->keyframeTimes.back() - t : t;
 	}
 
-	auto [kf0, kf1] = this->keyframeIndexTree.at(t);
+	auto [kf0, kf1] = this->keyframeIndexTree->at(t);
 	auto [t0, i0] = kf0;
 	auto [t1, i1] = kf1;
 
