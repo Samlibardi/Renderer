@@ -380,10 +380,10 @@ int main(size_t argc, const char* argv[]) {
 		}
 
 		if (((key == vkfw::Key::eEqual && modifiers & vkfw::ModifierKeyBits::eShift) || key == vkfw::Key::eKeyPad_Add) && (action == vkfw::KeyAction::ePress || action == vkfw::KeyAction::eRepeat)) {
-			renderer->settings().exposure += 1;
+			renderer->settings().exposure += 0.5;
 		}
 		if ((key == vkfw::Key::eMinus || key == vkfw::Key::eKeyPad_Subtract) && (action == vkfw::KeyAction::ePress || action == vkfw::KeyAction::eRepeat)) {
-			renderer->settings().exposure -= 1;
+			renderer->settings().exposure -= 0.5;
 		}
 	};
 
