@@ -106,8 +106,8 @@ void Texture::loadToDevice(const vk::Device device, const vma::Allocator allocat
 		for (uint32_t i = 1; i < mipLevels; i++) {
 			//transition prev miplevel
 			cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eTransferRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->core->_image, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, i - 1, 1, 0, 1} });
-			std::array<vk::Offset3D, 2> srcOffsets = { vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->core->width >> (i - 1)), static_cast<int32_t>(this->core->height >> (i - 1)), 1 } };
-			std::array<vk::Offset3D, 2> dstOffsets = { vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->core->width >> i), static_cast<int32_t>(this->core->height >> i), 1 } };
+			std::array<vk::Offset3D, 2> srcOffsets = { vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ std::max(static_cast<int32_t>(this->core->width >> (i - 1)), 1), std::max(static_cast<int32_t>(this->core->height >> (i - 1)), 1), 1 } };
+			std::array<vk::Offset3D, 2> dstOffsets = { vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ std::max(static_cast<int32_t>(this->core->width >> i), 1), std::max(static_cast<int32_t>(this->core->height >> i), 1), 1 } };
 			//copy from mip i-1 to mip i
 			cb.blitImage(this->core->_image, vk::ImageLayout::eTransferSrcOptimal, this->core->_image, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{ vk::ImageSubresourceLayers{ {vk::ImageAspectFlagBits::eColor}, i - 1, 0, 1 }, srcOffsets, vk::ImageSubresourceLayers{ {vk::ImageAspectFlagBits::eColor}, i, 0, 1 }, dstOffsets }, vk::Filter::eLinear);
 		}
