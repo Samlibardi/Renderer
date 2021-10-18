@@ -951,7 +951,9 @@ void VulkanRenderer::renderLoop() {
 		avgLuminance = std::exp2f(avgLuminance);
 		this->allocator.unmapMemory(this->averageLuminance1ImageAllocation);
 
-		float exposure = 1.03f - 2 / (std::log2(avgLuminance + 1.0f) + 2);
+		this->temporalLuminance = this->temporalLuminance + (avgLuminance - this->temporalLuminance) * (1 - std::exp(-deltaTime * 1.0f));
+
+		float exposure = 1.03f - 2 / (std::log2(this->temporalLuminance + 1.0f) + 2);
 		exposure = 0.18 / exposure + this->_settings.exposureBias;
 
 		cb.pushConstants<float>(this->tonemapPipelineLayout, vk::ShaderStageFlagBits::eFragment, 0, { exposure, this->_settings.gamma });

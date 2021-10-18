@@ -228,6 +228,8 @@ private:
 	vma::Allocation averageLuminance1ImageAllocation;
 	vk::ImageView averageLuminance1ImageView;
 
+	float temporalLuminance = 0.0f;
+
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
 
 	void createSwapchainAndAttachmentImages();
