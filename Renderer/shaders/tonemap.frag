@@ -9,6 +9,7 @@ layout(push_constant) uniform pushConstants {
 };
 
 layout(location = 0) out vec4 outColor;
+layout(location = 1) out float outLogLuminance;
 
 
 // filmic tonemap source: https://www.gdcvault.com/play/1012351/Uncharted-2-HDR
@@ -31,6 +32,8 @@ vec3 tone(vec3 v) {
 
 void main() {
     vec3 color = subpassLoad(inputColor).rgb;
+
+    outLogLuminance = log2(2 * color.r + 3 * color.g + color.b) - log2(6);
 
     color = tone(color)/tone(linWhitePoint);
 

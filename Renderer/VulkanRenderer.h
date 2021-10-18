@@ -38,7 +38,7 @@ typedef struct RendererSettings {
 
 	bool vsync = false;
 
-	float exposure = 0.0f;
+	float exposureBias = 0.0f;
 	float gamma = 2.2f;
 };
 
@@ -88,9 +88,9 @@ private:
 	vma::Allocator allocator;
 
 	vk::Format swapchainFormat;
-	vk::Format colorAttachmentFormat = vk::Format::eR8G8B8A8Unorm;
+	vk::Format colorAttachmentFormat = vk::Format::eUndefined;
 	vk::Format depthAttachmentFormat = vk::Format::eUndefined;
-	vk::Format envMapFormat = vk::Format::eR8G8B8A8Unorm;
+	vk::Format envMapFormat = vk::Format::eUndefined;
 
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::ImageView> swapchainImageViews;
@@ -105,8 +105,12 @@ private:
 	vk::ImageView depthImageView;
 	vma::Allocation depthImageAllocation;
 
+	vk::Image luminanceImage;
+	vk::ImageView luminanceImageView;
+	vma::Allocation luminanceImageAllocation;
+
 	vk::CommandPool commandPool;
-	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> commandBuffers;
+	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> swapchainCommandBuffers;
 
 	vk::RenderPass renderPass;
 	vk::PipelineCache pipelineCache;
@@ -119,11 +123,11 @@ private:
 
 	vk::DescriptorPool descriptorPool;
 	vk::DescriptorSetLayout globalDescriptorSetLayout;
+	vk::DescriptorSet globalDescriptorSet;
 	vk::DescriptorSetLayout cameraDescriptorSetLayout;
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
-	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
-	vk::DescriptorSet globalDescriptorSet;
 	std::array<vk::DescriptorSet, FRAMES_IN_FLIGHT> cameraDescriptorSets;
+	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	vk::DescriptorSet tonemapDescriptorSet;
 
 	vk::Buffer vertexIndexBuffer;
@@ -142,6 +146,7 @@ private:
 	vma::Allocation pbrBufferAllocation;
 	vk::Buffer alphaBuffer;
 	vma::Allocation alphaBufferAllocation;
+
 
 	vk::Pipeline envPipeline;
 	vk::PipelineLayout envPipelineLayout;
@@ -164,6 +169,7 @@ private:
 
 	std::vector<Texture> textures;
 	vk::Sampler textureSampler;
+	vk::Sampler averageLuminanceSampler;
 
 	std::vector<vk::ShaderModule> shaderModules{};
 
@@ -204,10 +210,27 @@ private:
 	std::vector<vk::Framebuffer> shadowMapFramebuffers;
 	std::vector<vk::Framebuffer> staticShadowMapFramebuffers;
 
-	
+
+	vk::PipelineLayout averageLuminancePipelineLayout;
+	vk::Pipeline averageLuminancePipeline;
+	vk::DescriptorSetLayout averageLuminanceDescriptorSetLayout;
+	std::vector<vk::DescriptorSet> averageLuminanceDescriptorSets;
+
+	std::vector<vk::CommandBuffer> averageLuminanceCommandBuffers;
+
+	vk::Image averageLuminance256Image;
+	vma::Allocation averageLuminance256ImageAllocation;
+	vk::ImageView averageLuminance512ImageView;
+	vk::Image averageLuminance16Image;
+	vma::Allocation averageLuminance16ImageAllocation;
+	vk::ImageView averageLuminance16ImageView;
+	vk::Image averageLuminance1Image;
+	vma::Allocation averageLuminance1ImageAllocation;
+	vk::ImageView averageLuminance1ImageView;
+
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
 
-	void createSwapchain();
+	void createSwapchainAndAttachmentImages();
 	void createRenderPass();
 
 	void createDescriptorPool();
@@ -217,6 +240,10 @@ private:
 	void createVertexBuffer();
 	void destroyVertexBuffer();
 	void createEnvPipeline();
+	
+	void createAverageLuminancePipeline();
+	void createAverageLuminanceImages();
+	void recordAverageLuminanceCommands();
 
 	void createShadowMapImage();
 	void createStaticShadowMapImage();

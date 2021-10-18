@@ -1,0 +1,36 @@
+#version 450
+
+layout (local_size_x = 8, local_size_y = 8) in;
+
+layout (set=0, binding=0) uniform sampler2D inputImage;
+layout (set=0, binding=1, r32f) uniform writeonly image2D averagedOutputImage;
+
+shared float localAverages[gl_WorkGroupSize.x][gl_WorkGroupSize.y];
+
+void main() {
+    const ivec2 samplePos = ivec2((gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy) * 2);
+    const float localAverageFactor = 1.0f/(gl_WorkGroupSize.x * gl_WorkGroupSize.y * 4);
+
+    vec4 lums;
+    lums.x = texelFetch(inputImage, samplePos + ivec2(0, 0), 0).r;
+    lums.y = texelFetch(inputImage, samplePos + ivec2(0, 1), 0).r;
+    lums.z = texelFetch(inputImage, samplePos + ivec2(1, 0), 0).r;
+    lums.w = texelFetch(inputImage, samplePos + ivec2(1, 1), 0).r;
+
+    localAverages[gl_LocalInvocationID.x][gl_LocalInvocationID.y] = dot(lums, vec4(localAverageFactor));
+
+    // parallel reduction
+    for(uint i = gl_WorkGroupSize.x / 2; i > 0; i >>= 1) {
+        if(gl_LocalInvocationID.x < i && gl_LocalInvocationID.y < i) {
+            localAverages[gl_LocalInvocationID.x][gl_LocalInvocationID.y] += 
+                localAverages[gl_LocalInvocationID.x+i][gl_LocalInvocationID.y+i] +
+                localAverages[gl_LocalInvocationID.x][gl_LocalInvocationID.y+i] +
+                localAverages[gl_LocalInvocationID.x+i][gl_LocalInvocationID.y];
+        }
+
+        barrier();
+    }
+
+    if(gl_LocalInvocationID.xy == uvec2(0, 0))
+        imageStore(averagedOutputImage, ivec2(gl_WorkGroupID), vec4(localAverages[0][0]));
+}
