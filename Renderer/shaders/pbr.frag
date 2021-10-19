@@ -12,6 +12,7 @@ layout(location = 1) in vec3 normal;
 layout(location = 2) in vec3 tangent;
 layout(location = 3) in vec3 bitangent;
 layout(location = 4) in vec2 uv;
+layout(location = 5) in vec3 directionalLightSpacePosition;
 
 layout(location = 0) out vec4 outColor;
 
@@ -38,14 +39,25 @@ struct PointLight {
   vec3 intensity;
 };
 
-layout(set=0, binding=0) readonly buffer lightsBuffer {
-   PointLight lights[];
+struct DirectionalLight {
+  vec3 position;
+  vec3 direction;
+  vec3 intensity;
+  mat4 viewproj;
 };
 
-layout(set=0, binding=1) uniform samplerCube envSpecSampler;
-layout(set=0, binding=2) uniform samplerCube envDiffuseSampler;
+layout(set=0, binding=0) readonly buffer pointLightsBuffer {
+   PointLight pointLights[];
+};
+
+layout(set=0, binding=1) readonly uniform directionalLightUBO {
+    DirectionalLight directionalLight;
+};
+
+layout(set=0, binding=2) uniform samplerCube envSamplers[2];
 layout(set=0, binding=3) uniform sampler2D brdfLUTSampler;
-layout(set=0, binding=4) uniform samplerCubeArrayShadow shadowMapsSampler;
+layout(set=0, binding=4) uniform samplerCubeArrayShadow pointShadowMapsSampler;
+layout(set=0, binding=5) uniform sampler2DShadow directionalShadowMapsSampler;
 
 layout(set=2, binding=0) uniform cameraData {
 	vec4 cameraPos;
@@ -64,7 +76,7 @@ const float far = 100.0f;
 const float near = 0.1f;
 
 void main()
-{	
+{
     vec4 albedo = (texture(albedoSampler, uv) * baseColorFactor);
     if(alphaMode == ALPHA_MODE_MASK && albedo.a < alphaCutoff) {
         outColor = vec4(0.0f);
@@ -88,21 +100,26 @@ void main()
 
     vec3 F0 = vec3(0.04); 
     F0 = mix(F0, albedo.rgb, metallic);
-	           
-    // reflectance equation
+	        
+    //output light accumulator
     vec3 Lo = vec3(0.0);
 
-    for(int i = 0; i < lights.length(); i++) {
+    //point lights
+    for(int i = 0; i < pointLights.length(); i++) {
 
-        vec3 lightPos = lights[i].position;
-        vec3 lightIntensity = lights[i].intensity;
+        vec3 lightPos = pointLights[i].position;
+        vec3 lightIntensity = pointLights[i].intensity;
 
-        if(max(lightIntensity.r, max(lightIntensity.g, lightIntensity.b)) <= 1e-3f) {
+        float d = distance(lightPos, position);
+
+        float attenuation = 1.0 / (d*d);
+        vec3 radiance = lightIntensity * attenuation;
+
+        if(max(radiance.r, max(radiance.g, radiance.b)) <= 1e-3f) {
             continue;
         }
 
         vec3 L = lightPos - position;
-        float d = distance(lightPos, position);
 
         vec3 absL = abs(L);
 
@@ -110,33 +127,44 @@ void main()
 
         lightDepth = (far - far * near / lightDepth )/(far - near);
 
-        float shadowTest = texture(shadowMapsSampler, vec4(-L, i), lightDepth);
+        float shadowTest = texture(pointShadowMapsSampler, vec4(-L, i), lightDepth);
 
         if(shadowTest < 1e-3)
             continue;
 
-        float attenuation = 1.0 / (d*d);
-        vec3 radiance = lightIntensity * attenuation;
-        
         L = normalize(L);
         Lo += shadowTest * BRDF(radiance, L, N, V, albedo.rgb, roughness, metallic, F0);
     }
-    
-    //envmap specular
-    const float NdotV = max(dot(N, V), 1e-3f);
-    vec3 envSpecular = textureLod(envSpecSampler, Rv, roughness * textureQueryLevels(envSpecSampler)).rgb;
-    vec2 envBRDF = textureLod(brdfLUTSampler, vec2(NdotV, roughness), 0).rg;
-    vec3 F = fresnelSchlick(NdotV, F0);
 
-    vec3 kS = F;
-    vec3 kD = 1.0 - kS;
-    kD *= 1.0 - metallic;	
+    //directional light
+    {
+        float shadowTest = texture(directionalShadowMapsSampler, vec3(directionalLightSpacePosition.xy/2 + 0.5f, directionalLightSpacePosition.z));
 
-    envSpecular = envSpecular * (kS * envBRDF.r + envBRDF.y);
-    vec3 envDiffuse = kD * texture(envDiffuseSampler, N).rgb * albedo.rgb;
+        if(shadowTest > 1e-3) {
+            vec3 L = directionalLight.direction;
+            L = normalize(L);
+            Lo += shadowTest * BRDF(directionalLight.intensity, L, N, V, albedo.rgb, roughness, metallic, F0);
+        }
+    }
 
-    vec3 ambient = (envDiffuse + envSpecular) * ao;
-    vec3 color = ambient + Lo + emissive;
+    //envmap
+    {
+        const float NdotV = max(dot(N, V), 1e-3f);
+        vec3 envSpecular = textureLod(envSamplers[0], Rv, roughness * textureQueryLevels(envSamplers[0])).rgb;
+        vec2 envBRDF = textureLod(brdfLUTSampler, vec2(NdotV, roughness), 0).rg;
+        vec3 F = fresnelSchlick(NdotV, F0);
+
+        vec3 kS = F;
+        vec3 kD = 1.0 - kS;
+        kD *= 1.0 - metallic;	
+
+        envSpecular = envSpecular * (kS * envBRDF.r + envBRDF.y);
+        vec3 envDiffuse = kD * texture(envSamplers[1], N).rgb * albedo.rgb;
+
+        Lo += (envDiffuse + envSpecular) * ao;
+    }
+
+    vec3 color = Lo + emissive;
 	
     if(alphaMode == ALPHA_MODE_MASK)
         outColor = vec4(color, 1.0f);

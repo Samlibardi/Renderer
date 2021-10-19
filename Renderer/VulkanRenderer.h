@@ -11,6 +11,7 @@
 
 #include "Mesh.h"
 #include "PointLight.h"
+#include "DirectionalLight.h"
 #include "Texture.h"
 #include "Camera.h"
 
@@ -24,12 +25,6 @@ typedef struct TextureInfo {
 	uint32_t height = 1;
 } TextureInfo;
 
-enum class MeshSortingMode {
-	eNone,
-	eFrontToBack,
-	eBackToFront
-};
-
 typedef struct RendererSettings {
 	bool hdrEnabled = true;
 
@@ -42,21 +37,34 @@ typedef struct RendererSettings {
 	float gamma = 2.2f;
 };
 
-typedef struct CameraData {
-	glm::vec4 position;
-	glm::mat4 viewMatrix;
-	glm::mat4 viewProjectionMatrix;
-	glm::mat4 invViewProjectionMatrix;
-} CameraData;
-
-typedef struct PointLightData {
-	alignas(16) glm::vec3 point;
-	alignas(16) glm::vec3 intensity;
-};
-
 #pragma once
 class VulkanRenderer
 {
+	typedef struct CameraShaderData {
+		glm::vec4 position;
+		glm::mat4 viewMatrix;
+		glm::mat4 viewProjectionMatrix;
+		glm::mat4 invViewProjectionMatrix;
+	} CameraData;
+
+	typedef struct PointLightShaderData {
+		alignas(16) glm::vec3 position;
+		alignas(16) glm::vec3 intensity;
+	};
+
+	typedef struct DirectionalLightShaderData {
+		alignas(16) glm::vec3 position;
+		alignas(16) glm::vec3 direction;
+		alignas(16) glm::vec3 intensity;
+		alignas(16) glm::mat4 viewProjMatrix;
+	};
+
+	enum class MeshSortingMode {
+		eNone,
+		eFrontToBack,
+		eBackToFront
+	};
+
 public:
 	VulkanRenderer(const vk::Instance vulkanInstance, const vk::SurfaceKHR surface, const RendererSettings& rendererSettings);
 	~VulkanRenderer();
@@ -65,7 +73,7 @@ public:
 	void setRootNodes(std::vector<std::shared_ptr<Node>> nodes);
 	void setMeshes(const std::vector<Mesh>& meshes);
 	void setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos);
-	void setLights(const std::vector<PointLight>& lights);
+	void setLights(const std::vector<PointLight>& pointLights, const DirectionalLight& directionalLight);
 
 	Camera& camera() { return this->_camera; };
 
@@ -125,6 +133,8 @@ private:
 	vk::DescriptorSetLayout globalDescriptorSetLayout;
 	vk::DescriptorSet globalDescriptorSet;
 	vk::DescriptorSetLayout cameraDescriptorSetLayout;
+	vk::DescriptorSetLayout envDescriptorSetLayout;
+	vk::DescriptorSet envDescriptorSet;
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
 	std::array<vk::DescriptorSet, FRAMES_IN_FLIGHT> cameraDescriptorSets;
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
@@ -138,7 +148,9 @@ private:
 	std::array <vk::Buffer, FRAMES_IN_FLIGHT> cameraBuffers;
 	std::array <vma::Allocation, FRAMES_IN_FLIGHT> cameraBufferAllocations;
 
-	std::vector<PointLight> lights;
+	std::vector<std::shared_ptr<PointLight>> pointLights;
+	std::vector<std::shared_ptr<PointLight>> shadowCastingPointLights;
+	DirectionalLight directionalLight;
 	vk::Buffer lightsBuffer;
 	vma::Allocation lightsBufferAllocation;
 
@@ -200,16 +212,23 @@ private:
 	vk::PipelineLayout shadowMapPipelineLayout;
 	vk::Pipeline shadowMapPipeline;
 	vk::Sampler shadowMapSampler;
-	vk::Image shadowMapImage;
-	vk::Image staticShadowMapImage;
-	vma::Allocation shadowMapImageAllocation;
-	vma::Allocation staticShadowMapImageAllocation;
-	vk::ImageView shadowMapCubeArrayImageView;
-	std::vector<vk::ImageView> shadowMapFaceImageViews;
-	std::vector<vk::ImageView> staticShadowMapFaceImageViews;
-	std::vector<vk::Framebuffer> shadowMapFramebuffers;
-	std::vector<vk::Framebuffer> staticShadowMapFramebuffers;
-
+	vk::Image pointShadowMapsImage;
+	vk::Image staticPointShadowMapsImage;
+	vma::Allocation pointShadowMapsImageAllocation;
+	vma::Allocation pointStaticShadowMapsImageAllocation;
+	vk::ImageView pointShadowMapCubeArrayImageView;
+	std::vector<vk::ImageView> pointShadowMapFaceImageViews;
+	std::vector<vk::ImageView> staticPointShadowMapFaceImageViews;
+	std::vector<vk::Framebuffer> pointShadowMapFramebuffers;
+	std::vector<vk::Framebuffer> staticPointShadowMapFramebuffers;
+	vk::Image directionalShadowMapImage;
+	vk::Image staticDirectionalShadowMapImage;
+	vma::Allocation directionalShadowMapImageAllocation;
+	vma::Allocation directionalStaticShadowMapImageAllocation;
+	vk::ImageView directionalShadowMapImageView;
+	vk::ImageView staticDirectionalShadowMapImageView;
+	vk::Framebuffer directionalShadowMapFramebuffer;
+	vk::Framebuffer staticDirectionalShadowMapFramebuffer;
 
 	vk::PipelineLayout averageLuminancePipelineLayout;
 	vk::Pipeline averageLuminancePipeline;
@@ -253,6 +272,8 @@ private:
 	void createStaticShadowMapRenderPass();
 	void createShadowMapPipeline();
 	void renderShadowMaps(uint32_t frameIndex);
+	void recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_t frameIndex); 
+	void recordDirectionalShadowMapsCommands(vk::CommandBuffer cb, uint32_t frameIndex);
 
 	void makeDiffuseEnvMap();
 	std::tuple<vk::Pipeline, vk::PipelineLayout> createEnvMapDiffuseBakePipeline(vk::RenderPass renderPass);

@@ -206,11 +206,11 @@
     <ClCompile Include="bindings\imgui_impl_glfw.cpp" />
     <ClCompile Include="bindings\imgui_impl_vulkan.cpp" />
     <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="DirectionalLight.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="Node.cpp" />
     <ClCompile Include="Object.cpp" />
-    <ClCompile Include="PointLight.cpp" />
     <ClCompile Include="Texture.cpp" />
     <ClCompile Include="Vertex.cpp" />
     <ClCompile Include="vma.cpp" />
@@ -223,6 +223,7 @@
     <ClInclude Include="bindings\imgui_impl_glfw.h" />
     <ClInclude Include="bindings\imgui_impl_vulkan.h" />
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="DirectionalLight.h" />
     <ClInclude Include="InterpolationTree.h" />
     <ClInclude Include="Mesh.h" />
     <ClInclude Include="Node.h" />

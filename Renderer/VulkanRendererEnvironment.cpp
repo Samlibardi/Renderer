@@ -53,12 +53,19 @@ void VulkanRenderer::createEnvPipeline() {
 
 	std::vector<vk::PushConstantRange> pushConstantRanges = { };
 
-	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout, this->cameraDescriptorSetLayout };
+	std::vector<vk::DescriptorSetLayoutBinding> setLayoutBindings = {
+		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+	};
+	this->envDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, setLayoutBindings });
+
+	std::vector<vk::DescriptorSetLayout> setLayouts = { this->envDescriptorSetLayout, this->cameraDescriptorSetLayout };
 
 	this->envPipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
 	auto [r, pipeline] = this->device.createGraphicsPipeline(this->pipelineCache, vk::GraphicsPipelineCreateInfo{ {}, shaderStagesInfo, & vertexInputInfo, & inputAssemblyInfo, nullptr, & viewportInfo, & rasterizationInfo, & multisampleInfo, & depthStencilInfo, & colorBlendInfo, & dynamicStateInfo, this->envPipelineLayout, this->renderPass, 0 });
 	this->envPipeline = pipeline;
+	
+	this->envDescriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, this->envDescriptorSetLayout })[0];
 }
 
 void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos) {
@@ -109,15 +116,13 @@ void VulkanRenderer::setEnvironmentMap(const std::array<TextureInfo, 6>& texture
 	vk::DescriptorImageInfo envMapImageInfo{ this->textureSampler, this->envMapImageView, vk::ImageLayout::eShaderReadOnlyOptimal };
 
 	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
-		vk::WriteDescriptorSet{ this->globalDescriptorSet, 1, 0, vk::DescriptorType::eCombinedImageSampler, envMapImageInfo },
+		vk::WriteDescriptorSet{ this->envDescriptorSet, 0, 0, vk::DescriptorType::eCombinedImageSampler, envMapImageInfo },
 	};
 	this->device.updateDescriptorSets(writeDescriptorSets, {});
 
 	this->makeDiffuseEnvMap();
 	this->makeSpecularEnvMap();
 }
-
-
 
 std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapDiffuseBakePipeline(vk::RenderPass renderPass) {
 	vk::ShaderModule vertexModule = loadShader("./shaders/envbake.vert.spv");
@@ -151,8 +156,8 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapDiffuse
 	vk::PipelineDynamicStateCreateInfo dynamicStateInfo{ {}, {} };
 
 	std::vector<vk::PushConstantRange> pushConstantRanges = { vk::PushConstantRange{ vk::ShaderStageFlagBits::eVertex, 0, sizeof(glm::mat4) * 1 }, };
-
-	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout };
+	
+	std::vector<vk::DescriptorSetLayout> setLayouts = { this->envDescriptorSetLayout };
 
 	vk::PipelineLayout pipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
@@ -213,7 +218,7 @@ void VulkanRenderer::makeDiffuseEnvMap() {
 	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 	for (unsigned short i = 0; i < 6; i++) {
 		cb.beginRenderPass(vk::RenderPassBeginInfo{ renderPass, framebuffers[i], vk::Rect2D{{0, 0}, {this->envMapDiffuseResolution, this->envMapDiffuseResolution}}, clearValues }, vk::SubpassContents::eInline);
-		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, this->globalDescriptorSet, {});
+		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, this->envDescriptorSet, {});
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 		glm::mat4 view = views[i];
 		cb.pushConstants<glm::mat4>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, glm::inverse(proj * view));
@@ -239,7 +244,7 @@ void VulkanRenderer::makeDiffuseEnvMap() {
 	std::vector<vk::DescriptorImageInfo> imageInfos = { vk::DescriptorImageInfo{this->textureSampler, this->envMapDiffuseImageView, vk::ImageLayout::eShaderReadOnlyOptimal } };
 
 	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
-		vk::WriteDescriptorSet{ this->globalDescriptorSet, 2, 0, vk::DescriptorType::eCombinedImageSampler, imageInfos },
+		vk::WriteDescriptorSet{ this->globalDescriptorSet, 2, 1, vk::DescriptorType::eCombinedImageSampler, imageInfos },
 	};
 	this->device.updateDescriptorSets(writeDescriptorSets, {});
 }
@@ -279,8 +284,8 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> VulkanRenderer::createEnvMapSpecula
 	vk::PipelineDynamicStateCreateInfo dynamicStateInfo{ {}, dynamicStates };
 
 	std::vector<vk::PushConstantRange> pushConstantRanges = { vk::PushConstantRange{ vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, sizeof(glm::mat4) * 1 + sizeof(float) }, };
-
-	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout };
+	
+	std::vector<vk::DescriptorSetLayout> setLayouts = { this->envDescriptorSetLayout };
 
 	vk::PipelineLayout pipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 
@@ -346,7 +351,7 @@ void VulkanRenderer::makeSpecularEnvMap() {
 		for (unsigned short roughnessLevel = 0; roughnessLevel < 10; roughnessLevel++) {
 			uint32_t renderRes = this->envMapSpecularResolution / (1 << roughnessLevel);
 			cb.beginRenderPass(vk::RenderPassBeginInfo{ renderPass, framebuffers[face][roughnessLevel], vk::Rect2D{{0, 0}, {renderRes, renderRes}}, clearValues }, vk::SubpassContents::eInline);
-			cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, this->globalDescriptorSet, {});
+			cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, this->envDescriptorSet, {});
 			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 			cb.setViewport(0, vk::Viewport{ 0.0f, 0.0f, static_cast<float>(renderRes), static_cast<float>(renderRes), 0.0f, 1.0f });
 			cb.setScissor(0, vk::Rect2D{ {0, 0}, {renderRes, renderRes} });
@@ -379,7 +384,7 @@ void VulkanRenderer::makeSpecularEnvMap() {
 	vk::DescriptorImageInfo brdfLUTImageInfo{ this->textureSampler, this->BRDFLutTexture.imageView(), vk::ImageLayout::eShaderReadOnlyOptimal };
 
 	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
-		vk::WriteDescriptorSet{ this->globalDescriptorSet, 1, 0, vk::DescriptorType::eCombinedImageSampler, envMapSpecularImageInfo },
+		vk::WriteDescriptorSet{ this->globalDescriptorSet, 2, 0, vk::DescriptorType::eCombinedImageSampler, envMapSpecularImageInfo },
 		vk::WriteDescriptorSet{ this->globalDescriptorSet, 3, 0, vk::DescriptorType::eCombinedImageSampler, brdfLUTImageInfo },
 	};
 	this->device.updateDescriptorSets(writeDescriptorSets, {});

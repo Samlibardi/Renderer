@@ -343,18 +343,23 @@ int main(size_t argc, const char* argv[]) {
 	};
 	renderer->setEnvironmentMap(cubeFaces);
 
-	std::vector<PointLight> lights{ 
-		{{4.0f, 1.15f, -1.74f}, {70.0f, 24.0f, 2.0f}},
-		{{4.0f, 1.15f, 1.15f}, {72.0f, 26.0f, 1.0f}},
-		{{-5.0f, 1.15f, 1.15f}, {67.0f, 22.0f, 2.0f}},
-		{{-5.0f, 1.15f, -1.74f}, {77.0f, 24.0f, 3.0f}},
+	std::vector<PointLight> pointLights{ 
+		{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}},
+		//{{4.0f, 1.15f, -1.74f}, {70.0f, 24.0f, 2.0f}},
+		//{{4.0f, 1.15f, 1.15f}, {72.0f, 26.0f, 1.0f}},
+		//{{-5.0f, 1.15f, 1.15f}, {67.0f, 22.0f, 2.0f}},
+		//{{-5.0f, 1.15f, -1.74f}, {77.0f, 24.0f, 3.0f}},
+	};
+
+	std::vector<DirectionalLight> directionalLights{
+		{{0.0f, 20.0f, 0.0f}, {100.0f, 00.0f, 00.0f}, glm::quatLookAt(glm::normalize(glm::vec3{ 0.25f, -1.0f, 0.25f }), glm::vec3{ 0.0f, 1.0f, 0.0f })},
 	};
 	/*for (int i = 0; i < 5; i++) {
 		const float angle = glm::radians(360.0f) / 5 * i;
 		const float radius = 3.0f;
 		lights.push_back(PointLight{ {radius * glm::sin(angle), 2.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
 	}*/
-	renderer->setLights(lights);
+	renderer->setLights(pointLights, directionalLights);
 
 	openGltf(argv[1]);
 
