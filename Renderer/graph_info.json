@@ -13,6 +13,10 @@
    "False"
   ],
   [
+   "imgui:shared",
+   "False"
+  ],
+  [
    "stb:with_deprecated",
    "True"
   ],

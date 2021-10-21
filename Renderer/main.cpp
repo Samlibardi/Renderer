@@ -351,15 +351,13 @@ int main(size_t argc, const char* argv[]) {
 		//{{-5.0f, 1.15f, -1.74f}, {77.0f, 24.0f, 3.0f}},
 	};
 
-	std::vector<DirectionalLight> directionalLights{
-		{{0.0f, 20.0f, 0.0f}, {100.0f, 00.0f, 00.0f}, glm::quatLookAt(glm::normalize(glm::vec3{ 0.25f, -1.0f, 0.25f }), glm::vec3{ 0.0f, 1.0f, 0.0f })},
-	};
+	DirectionalLight directionalLight = { {0.0f, 100.0f, 0.0f}, {100.0f, 80.0f, 20.0f}, glm::quatLookAt(glm::normalize(glm::vec3{ 0.05f, -1.0f, 0.05f }), glm::vec3{ 1.0f, 0.0f, 0.0f }) };
 	/*for (int i = 0; i < 5; i++) {
 		const float angle = glm::radians(360.0f) / 5 * i;
 		const float radius = 3.0f;
 		lights.push_back(PointLight{ {radius * glm::sin(angle), 2.0f, radius * glm::cos(angle)}, {100.0f, 100.0f, 100.0f} });
 	}*/
-	renderer->setLights(pointLights, directionalLights);
+	renderer->setLights(pointLights, directionalLight);
 
 	openGltf(argv[1]);
 
@@ -384,11 +382,18 @@ int main(size_t argc, const char* argv[]) {
 			pressedKeys.erase(key);
 		}
 
-		if (((key == vkfw::Key::eEqual && modifiers & vkfw::ModifierKeyBits::eShift) || key == vkfw::Key::eKeyPad_Add) && (action == vkfw::KeyAction::ePress || action == vkfw::KeyAction::eRepeat)) {
-			renderer->settings().exposureBias += 0.5;
-		}
-		if ((key == vkfw::Key::eMinus || key == vkfw::Key::eKeyPad_Subtract) && (action == vkfw::KeyAction::ePress || action == vkfw::KeyAction::eRepeat)) {
-			renderer->settings().exposureBias -= 0.5;
+		if (action == vkfw::KeyAction::ePress || action == vkfw::KeyAction::eRepeat) {
+			if ((key == vkfw::Key::eEqual && modifiers & vkfw::ModifierKeyBits::eShift) || key == vkfw::Key::eKeyPad_Add)
+				renderer->settings().exposureBias += 0.5;
+
+			if (key == vkfw::Key::eMinus || key == vkfw::Key::eKeyPad_Subtract)
+				renderer->settings().exposureBias -= 0.5;
+
+			if (key == vkfw::Key::eLeftBracket)
+				renderer->camera().setVFov(renderer->camera().vfov() + 1.0f);
+
+			if (key == vkfw::Key::eRightBracket)
+				renderer->camera().setVFov(renderer->camera().vfov() - 1.0f);
 		}
 	};
 

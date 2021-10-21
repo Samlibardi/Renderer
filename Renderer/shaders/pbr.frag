@@ -7,12 +7,11 @@
 #define ALPHA_MODE_MASK 1
 #define ALPHA_MODE_BLEND 2
 
-layout(location = 0) in vec3 position;
+layout(location = 0) in vec3 worldSpacePosition;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec3 tangent;
 layout(location = 3) in vec3 bitangent;
 layout(location = 4) in vec2 uv;
-layout(location = 5) in vec3 directionalLightSpacePosition;
 
 layout(location = 0) out vec4 outColor;
 
@@ -43,25 +42,32 @@ struct DirectionalLight {
   vec3 position;
   vec3 direction;
   vec3 intensity;
-  mat4 viewproj;
+};
+
+struct CSMSplit {
+    mat4 viewproj;
+    float depth;
 };
 
 layout(set=0, binding=0) readonly buffer pointLightsBuffer {
    PointLight pointLights[];
 };
 
-layout(set=0, binding=1) readonly uniform directionalLightUBO {
+layout(set=0, binding=1) uniform directionalLightBuffer {
     DirectionalLight directionalLight;
 };
 
 layout(set=0, binding=2) uniform samplerCube envSamplers[2];
 layout(set=0, binding=3) uniform sampler2D brdfLUTSampler;
 layout(set=0, binding=4) uniform samplerCubeArrayShadow pointShadowMapsSampler;
-layout(set=0, binding=5) uniform sampler2DShadow directionalShadowMapsSampler;
+layout(set=0, binding=5) uniform sampler2DArrayShadow directionalShadowMapsSampler;
+
+layout(set=2, binding=1) readonly buffer csmSplitsBuffer {
+    CSMSplit csmSplits[];
+};
 
 layout(set=2, binding=0) uniform cameraData {
 	vec4 cameraPos;
-	mat4 viewMatrix;
 	mat4 viewProjectionMatrix;
 	mat4 invViewProjectionMatrix;
 };
@@ -94,7 +100,7 @@ void main()
     N = N * 2.0 - 1.0;
     N = normalize(TBN * N);
 
-    vec3 V = normalize(vec3(cameraPos) - position);
+    vec3 V = normalize(vec3(cameraPos) - worldSpacePosition);
     
     vec3 Rv = reflect(-V, N);
 
@@ -110,7 +116,7 @@ void main()
         vec3 lightPos = pointLights[i].position;
         vec3 lightIntensity = pointLights[i].intensity;
 
-        float d = distance(lightPos, position);
+        float d = distance(lightPos, worldSpacePosition);
 
         float attenuation = 1.0 / (d*d);
         vec3 radiance = lightIntensity * attenuation;
@@ -119,7 +125,7 @@ void main()
             continue;
         }
 
-        vec3 L = lightPos - position;
+        vec3 L = lightPos - worldSpacePosition;
 
         vec3 absL = abs(L);
 
@@ -138,7 +144,18 @@ void main()
 
     //directional light
     {
-        float shadowTest = texture(directionalShadowMapsSampler, vec3(directionalLightSpacePosition.xy/2 + 0.5f, directionalLightSpacePosition.z));
+        CSMSplit csmSplit = csmSplits[0];
+        int splitIndex = 0;
+        for(int i = 1; i < csmSplits.length(); i++) {
+            if(gl_FragCoord.z < csmSplits[i].depth)
+                break;
+            csmSplit = csmSplits[i];
+            splitIndex = i;
+        }
+
+        vec4 directionalLightSpacePosition = csmSplits[splitIndex].viewproj * vec4(worldSpacePosition, 1.0f);
+
+        float shadowTest = texture(directionalShadowMapsSampler, vec4(directionalLightSpacePosition.xy/2 + 0.5f, splitIndex, directionalLightSpacePosition.z));
 
         if(shadowTest > 1e-3) {
             vec3 L = directionalLight.direction;

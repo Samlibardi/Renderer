@@ -5,6 +5,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/transform.hpp>
 
+#include "Camera.h"
+
 class DirectionalLight
 {
 public:
@@ -14,8 +16,6 @@ public:
 	bool castShadows = true;
 	bool staticShadowMapRendered = false;
 
-	static inline const glm::mat4 projectionMatrix = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::ortho<float>(-20.0f, 20.0f, -20.0f, 20.0f, 0.1f, 100.0f);
-
-	glm::mat4 lightViewProjMatrix() const;
+	Camera lightViewCamera() const;
 };
 

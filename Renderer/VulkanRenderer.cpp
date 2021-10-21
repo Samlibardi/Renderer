@@ -31,6 +31,8 @@ VulkanRenderer::VulkanRenderer(const vk::Instance vulkanInstance, const vk::Surf
 	this->createDescriptorPool();
 
 	this->createSwapchainAndAttachmentImages();
+	this->_camera.setAspectRatio(static_cast<float>(this->swapchainExtent.width) / static_cast<float>(this->swapchainExtent.height));
+
 	this->createRenderPass();
 	
 	this->pipelineCache = this->device.createPipelineCache(vk::PipelineCacheCreateInfo{});
@@ -40,6 +42,7 @@ VulkanRenderer::VulkanRenderer(const vk::Instance vulkanInstance, const vk::Surf
 
 	this->createShadowMapRenderPass();
 	this->createStaticShadowMapRenderPass();
+	this->createDirectionalShadowMapRenderPass();
 	this->createShadowMapPipeline();
 
 	this->createAverageLuminancePipeline();
@@ -144,7 +147,7 @@ VulkanRenderer::~VulkanRenderer() {
 	
 	this->device.destroyDescriptorSetLayout(this->globalDescriptorSetLayout);
 	this->device.destroyDescriptorSetLayout(this->pbrDescriptorSetLayout);
-	this->device.destroyDescriptorSetLayout(this->cameraDescriptorSetLayout);
+	this->device.destroyDescriptorSetLayout(this->perFrameInFlightDescriptorSetLayout);
 	this->device.destroyDescriptorSetLayout(this->tonemapDescriptorSetLayout);
 
 	this->device.destroyDescriptorPool(this->descriptorPool);
@@ -188,7 +191,7 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const
 	size_t pointBufferSize = pointLights.size() * sizeof(PointLightShaderData);
 	size_t directionalBufferSize = sizeof(DirectionalLightShaderData);
 	size_t bufferSize = pointBufferSize + directionalBufferSize;
-	std::tie(this->lightsBuffer, this->lightsBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	std::tie(this->lightsBuffer, this->lightsBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 
 	auto [lightsStagingBuffer, lightsStagingBufferAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 
@@ -197,7 +200,7 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const
 		pointData[i] = PointLightShaderData{ light.point, light.intensity };
 	}
 	DirectionalLightShaderData* directionalData = reinterpret_cast<DirectionalLightShaderData*>(pointData + pointLights.size());
-	*directionalData = DirectionalLightShaderData{ directionalLight.position, directionalLight.orientation * glm::vec3{ 0.0f, 0.0f, 1.0f}, directionalLight.intensity, directionalLight.lightViewProjMatrix() };
+	*directionalData = DirectionalLightShaderData{ directionalLight.position, directionalLight.orientation * glm::vec3{ 0.0f, 0.0f, 1.0f}, directionalLight.intensity };
 	this->allocator.unmapMemory(lightsStagingBufferAllocation);
 
 	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
@@ -218,7 +221,7 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const
 	std::vector<vk::DescriptorBufferInfo> directionalBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, pointBufferSize, directionalBufferSize } };
 	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = { 
 		vk::WriteDescriptorSet{ this->globalDescriptorSet, 0, 0, vk::DescriptorType::eStorageBuffer, {}, pointBufferInfos },
-		vk::WriteDescriptorSet{ this->globalDescriptorSet, 1, 0, vk::DescriptorType::eStorageBuffer, {}, directionalBufferInfos }
+		vk::WriteDescriptorSet{ this->globalDescriptorSet, 1, 0, vk::DescriptorType::eUniformBuffer, {}, directionalBufferInfos }
 	};
 	this->device.updateDescriptorSets(writeDescriptorSets, {});
 
@@ -539,7 +542,8 @@ void VulkanRenderer::createDescriptorPool() {
 	const uint32_t maxObjectCount = 512u;
 	std::vector< vk::DescriptorPoolSize> poolSizes = {
 		vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, 5 + 5 * maxObjectCount },
-		vk::DescriptorPoolSize{ vk::DescriptorType::eStorageBuffer, 2 },
+		vk::DescriptorPoolSize{ vk::DescriptorType::eStorageBuffer, 2 + 1 * FRAMES_IN_FLIGHT },
+		vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer, 1 },
 		vk::DescriptorPoolSize{ vk::DescriptorType::eInputAttachment, 1},
 		vk::DescriptorPoolSize{ vk::DescriptorType::eStorageImage, 1 },
 	};
@@ -614,7 +618,7 @@ void VulkanRenderer::createPipeline() {
 
 	std::vector<vk::DescriptorSetLayoutBinding> globalDescriptorSetBindings = {  
 		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment},
-		vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment},
+		vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex },
 		vk::DescriptorSetLayoutBinding{2, vk::DescriptorType::eCombinedImageSampler, 2, vk::ShaderStageFlagBits::eFragment},
 		vk::DescriptorSetLayoutBinding{3, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
 		vk::DescriptorSetLayoutBinding{4, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
@@ -622,21 +626,22 @@ void VulkanRenderer::createPipeline() {
 	};
 	this->globalDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, globalDescriptorSetBindings });
 
-	std::vector<vk::DescriptorSetLayoutBinding> cameraDescriptorSetBindings = {
-		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment}
+	std::vector<vk::DescriptorSetLayoutBinding> perFrameInFlightDescriptorSetBindings = {
+		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
+		vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment},
 	};
-	this->cameraDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, cameraDescriptorSetBindings });
+	this->perFrameInFlightDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, perFrameInFlightDescriptorSetBindings });
 
-	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout, this->pbrDescriptorSetLayout, this->cameraDescriptorSetLayout };
+	std::vector<vk::DescriptorSetLayout> setLayouts = { this->globalDescriptorSetLayout, this->pbrDescriptorSetLayout, this->perFrameInFlightDescriptorSetLayout };
 	
 	this->globalDescriptorSet = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, this->globalDescriptorSetLayout })[0];
 	
 	{
 		std::array<vk::DescriptorSetLayout, FRAMES_IN_FLIGHT> cameraAllocateSetLayouts;
 		for (uint32_t i = 0; i < FRAMES_IN_FLIGHT; i++)
-			cameraAllocateSetLayouts[i] = cameraDescriptorSetLayout;
-		auto cameraDescriptorSets = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, cameraAllocateSetLayouts });
-		std::copy(cameraDescriptorSets.begin(), cameraDescriptorSets.end(), this->cameraDescriptorSets.begin());
+			cameraAllocateSetLayouts[i] = perFrameInFlightDescriptorSetLayout;
+		auto perFrameInFlightDescriptorSets = this->device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo{ this->descriptorPool, cameraAllocateSetLayouts });
+		std::copy(perFrameInFlightDescriptorSets.begin(), perFrameInFlightDescriptorSets.end(), this->perFrameInFlightDescriptorSets.begin());
 	}
 
 	this->pipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
@@ -650,7 +655,7 @@ void VulkanRenderer::createPipeline() {
 		std::tie(this->cameraBuffers[i], this->cameraBufferAllocations[i]) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, sizeof(CameraShaderData), vk::BufferUsageFlagBits::eUniformBuffer, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu, vk::MemoryPropertyFlagBits::eHostCoherent });
 
 		std::vector<vk::DescriptorBufferInfo> bufferInfos = { vk::DescriptorBufferInfo{this->cameraBuffers[i], 0, sizeof(CameraShaderData)} };
-		this->device.updateDescriptorSets(vk::WriteDescriptorSet{ this->cameraDescriptorSets[i], 0, 0, vk::DescriptorType::eUniformBuffer, {}, bufferInfos }, {});
+		this->device.updateDescriptorSets(vk::WriteDescriptorSet{ this->perFrameInFlightDescriptorSets[i], 0, 0, vk::DescriptorType::eUniformBuffer, {}, bufferInfos }, {});
 	}
 }
 
@@ -747,8 +752,8 @@ void VulkanRenderer::createVertexBuffer() {
 			ibOffset += len;
 		}
 		
-		mesh->firstIndex = indexCount;
-		mesh->firstVertex = vertexCount;
+		mesh->firstIndexOffset = indexCount;
+		mesh->firstVertexOffset = vertexCount;
 		indexCount += mesh->indices.size();
 		vertexCount += mesh->vertices.size();
 	}
@@ -772,54 +777,12 @@ void VulkanRenderer::destroyVertexBuffer() {
 	this->allocator.destroyBuffer(this->vertexIndexBuffer, this->vertexIndexBufferAllocation);
 }
 
-
-//Source: http://www.cs.otago.ac.nz/postgrads/alexis/planeExtraction.pdf
-std::array<glm::vec4, 6> frustumPlanesFromMatrix(const glm::mat4& M) {
-	std::array<glm::vec4, 6> planes;/*{
-		glm::vec4{ 1.0f, 0.0f, 0.0f, 1.0f },
-		glm::vec4{ -1.0f, 0.0f, 0.0f, 1.0f },
-		glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f },
-		glm::vec4{ 0.0f, -1.0f, 0.0f, 1.0f },
-		glm::vec4{ 0.0f, 0.0f, 1.0f, 1.0f },
-		glm::vec4{ 0.0f, 0.0f, -1.0f, 0.0f },
-	};*/
-
-	//-X
-	planes[0].x = M[0][3] + M[0][0];
-	planes[0].y = M[1][3] + M[1][0];
-	planes[0].z = M[2][3] + M[2][0];
-	planes[0].w = M[3][3] + M[3][0];
-	//+X
-	planes[1].x = M[0][3] - M[0][0];
-	planes[1].y = M[1][3] - M[1][0];
-	planes[1].z = M[2][3] - M[2][0];
-	planes[1].w = M[3][3] - M[3][0];
-	//-Y
-	planes[2].x = M[0][3] + M[0][1];
-	planes[2].y = M[1][3] + M[1][1];
-	planes[2].z = M[2][3] + M[2][1];
-	planes[2].w = M[3][3] + M[3][1];
-	//+Y
-	planes[3].x = M[0][3] - M[0][1];
-	planes[3].y = M[1][3] - M[1][1];
-	planes[3].z = M[2][3] - M[2][1];
-	planes[3].w = M[3][3] - M[3][1];
-	//+Z
-	planes[4].x = M[0][3] - M[0][2];
-	planes[4].y = M[1][3] - M[1][2];
-	planes[4].z = M[2][3] - M[2][2];
-	planes[4].w = M[3][3] - M[3][2];
-	//-Z
-	planes[5].x = M[0][2];
-	planes[5].y = M[1][2];
-	planes[5].z = M[2][2];
-	planes[5].w = M[3][2];
-
-	return planes;
+bool VulkanRenderer::cullMesh(const Mesh& mesh) {
+	return this->cullMesh(mesh, this->_camera);
 }
 
-bool cullMesh(const Mesh& mesh, const glm::mat4& modelviewproj) {
-	const auto& planes = frustumPlanesFromMatrix(modelviewproj); //planes pointing inside frustum
+bool VulkanRenderer::cullMesh(const Mesh& mesh, const Camera& pov) {
+	const auto& planes = pov.getFrustumPlanesLocalSpace(mesh.node->modelMatrix()); //planes pointing inside frustum
 
 	for (auto& plane : planes) {
 		glm::vec3 nVertex = mesh.boundingBox.first;
@@ -836,10 +799,8 @@ bool cullMesh(const Mesh& mesh, const glm::mat4& modelviewproj) {
 
 void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull, MeshSortingMode sortingMode) {
 
-	auto culledMeshes = iter::filter([viewproj](const std::shared_ptr<Mesh> mesh) {
-		const glm::mat4 model = mesh->node->modelMatrix();
-		const glm::mat4 modelviewproj = viewproj * model;
-		return !cullMesh(*mesh, modelviewproj);
+	auto culledMeshes = iter::filter([this](const std::shared_ptr<Mesh> mesh) {
+		return !this->cullMesh(*mesh);
 		}, meshes);
 
 	std::vector<std::shared_ptr<Mesh>> sortedMeshes;
@@ -862,7 +823,7 @@ void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes
 		std::vector descriptorSets = { this->globalDescriptorSet };
 		if (mesh->hasDescriptorSet)
 			descriptorSets.push_back(mesh->descriptorSet);
-		descriptorSets.push_back(this->cameraDescriptorSets[frameIndex]);
+		descriptorSets.push_back(this->perFrameInFlightDescriptorSets[frameIndex]);
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->pipelineLayout, 0, descriptorSets, {});
 
@@ -874,9 +835,9 @@ void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes
 		cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstants);
 
 		if (mesh->isIndexed)
-			cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndex, 0, 0);
+			cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndexOffset, 0, 0);
 		else
-			cb.draw(mesh->vertices.size(), 1, mesh->firstVertex, 0);
+			cb.draw(mesh->vertices.size(), 1, mesh->firstVertexOffset, 0);
 	}
 }
 
@@ -891,8 +852,6 @@ void VulkanRenderer::renderLoop() {
 	size_t frameIndex = 0;
 	auto frameTime = std::chrono::high_resolution_clock::now();
 	double runningTime = 0;
-
-	glm::mat4 proj = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::perspective(glm::radians(35.0f), this->swapchainExtent.width / (float)this->swapchainExtent.height, 0.01f, 1000.0f);
 
 	while (this->running) {
 		frameIndex = (frameIndex + 1) % FRAMES_IN_FLIGHT;
@@ -913,14 +872,13 @@ void VulkanRenderer::renderLoop() {
 		this->renderShadowMaps(frameIndex);
 
 		glm::vec3 cameraPos;
-		glm::mat4 view;
-		std::tie(cameraPos, view) = this->_camera.positionAndMatrix();
+		glm::mat4 viewproj;
+		std::tie(cameraPos, viewproj) = this->_camera.positionAndMatrix();
 
-		glm::mat4 viewproj = proj * view;
 		glm::mat4 invviewproj = glm::inverse(viewproj);
 
 		CameraShaderData* cameraUBO = reinterpret_cast<CameraShaderData*>(this->allocator.mapMemory(this->cameraBufferAllocations[frameIndex]));
-		*cameraUBO = CameraShaderData{ glm::vec4{cameraPos, 1.0}, view, viewproj, invviewproj };
+		*cameraUBO = CameraShaderData{ glm::vec4{cameraPos, 1.0}, viewproj, invviewproj };
 		this->allocator.unmapMemory(this->cameraBufferAllocations[frameIndex]);
 
 		auto&& [r, imageIndex] = this->device.acquireNextImageKHR(this->swapchain, UINT64_MAX, this->imageAcquiredSemaphores[frameIndex]);
@@ -938,7 +896,7 @@ void VulkanRenderer::renderLoop() {
 			this->drawMeshes(this->opaqueMeshes, cb, frameIndex, viewproj, cameraPos, true, MeshSortingMode::eFrontToBack);
 		}
 
-		std::vector<vk::DescriptorSet> envDescriptorSets = { this->envDescriptorSet, this->cameraDescriptorSets[frameIndex] };
+		std::vector<vk::DescriptorSet> envDescriptorSets = { this->envDescriptorSet, this->perFrameInFlightDescriptorSets[frameIndex] };
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, this->envPipelineLayout, 0, envDescriptorSets, {});
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->envPipeline);
 		cb.draw(6, 1, 0, 0);

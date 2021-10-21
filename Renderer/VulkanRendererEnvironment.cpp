@@ -58,7 +58,7 @@ void VulkanRenderer::createEnvPipeline() {
 	};
 	this->envDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, setLayoutBindings });
 
-	std::vector<vk::DescriptorSetLayout> setLayouts = { this->envDescriptorSetLayout, this->cameraDescriptorSetLayout };
+	std::vector<vk::DescriptorSetLayout> setLayouts = { this->envDescriptorSetLayout, this->perFrameInFlightDescriptorSetLayout };
 
 	this->envPipelineLayout = this->device.createPipelineLayout(vk::PipelineLayoutCreateInfo{ {}, setLayouts, pushConstantRanges });
 

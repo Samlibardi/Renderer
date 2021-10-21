@@ -1,3 +1,5 @@
+#pragma once
+
 #include <thread>
 #include <shared_mutex>
 #include <tuple>
@@ -29,7 +31,8 @@ typedef struct RendererSettings {
 	bool hdrEnabled = true;
 
 	bool dynamicShadowsEnabled = true;
-	uint32_t shadowMapResolution = 1024u;
+	uint32_t pointShadowMapResolution = 1024u;
+	uint32_t directionalShadowMapResolution = 4096u;
 
 	bool vsync = false;
 
@@ -37,12 +40,10 @@ typedef struct RendererSettings {
 	float gamma = 2.2f;
 };
 
-#pragma once
 class VulkanRenderer
 {
 	typedef struct CameraShaderData {
 		glm::vec4 position;
-		glm::mat4 viewMatrix;
 		glm::mat4 viewProjectionMatrix;
 		glm::mat4 invViewProjectionMatrix;
 	} CameraData;
@@ -56,7 +57,11 @@ class VulkanRenderer
 		alignas(16) glm::vec3 position;
 		alignas(16) glm::vec3 direction;
 		alignas(16) glm::vec3 intensity;
-		alignas(16) glm::mat4 viewProjMatrix;
+	};
+
+	typedef struct CSMSplitShaderData {
+		glm::mat4 viewproj;
+		alignas(16) float depth;
 	};
 
 	enum class MeshSortingMode {
@@ -84,7 +89,7 @@ private:
 
 	RendererSettings _settings;
 	
-	Camera _camera{ { 0.0f, 0.0f, 0.0f }, {0.0f, 0.0f, 0.0f} };
+	Camera _camera = Camera::Perspective(glm::vec3{ 0.0f }, glm::vec3{ 0.0f }, 0.1f, 60.0f, 40.0f, 1.0f);
 
 	vk::Instance vulkanInstance;
 	vk::SurfaceKHR surface;
@@ -132,11 +137,11 @@ private:
 	vk::DescriptorPool descriptorPool;
 	vk::DescriptorSetLayout globalDescriptorSetLayout;
 	vk::DescriptorSet globalDescriptorSet;
-	vk::DescriptorSetLayout cameraDescriptorSetLayout;
+	vk::DescriptorSetLayout perFrameInFlightDescriptorSetLayout;
 	vk::DescriptorSetLayout envDescriptorSetLayout;
 	vk::DescriptorSet envDescriptorSet;
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
-	std::array<vk::DescriptorSet, FRAMES_IN_FLIGHT> cameraDescriptorSets;
+	std::array<vk::DescriptorSet, FRAMES_IN_FLIGHT> perFrameInFlightDescriptorSets;
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	vk::DescriptorSet tonemapDescriptorSet;
 
@@ -221,14 +226,20 @@ private:
 	std::vector<vk::ImageView> staticPointShadowMapFaceImageViews;
 	std::vector<vk::Framebuffer> pointShadowMapFramebuffers;
 	std::vector<vk::Framebuffer> staticPointShadowMapFramebuffers;
-	vk::Image directionalShadowMapImage;
-	vk::Image staticDirectionalShadowMapImage;
-	vma::Allocation directionalShadowMapImageAllocation;
-	vma::Allocation directionalStaticShadowMapImageAllocation;
-	vk::ImageView directionalShadowMapImageView;
-	vk::ImageView staticDirectionalShadowMapImageView;
-	vk::Framebuffer directionalShadowMapFramebuffer;
-	vk::Framebuffer staticDirectionalShadowMapFramebuffer;
+
+	vk::RenderPass directionalShadowMapRenderPass;
+	uint8_t directionalShadowCascadeLevels = 5;
+	std::vector<float> directionalShadowCascadeDepths;
+	std::vector<float> directionalShadowCascadeCameraSpaceDepths;
+	std::array<vk::Buffer, FRAMES_IN_FLIGHT> directionalShadowCascadeSplitDataBuffers;
+	std::array<vma::Allocation, FRAMES_IN_FLIGHT> directionalShadowCascadeSplitDataBufferAllocations;
+	std::vector<glm::mat4> directionalShadowCascadeCropMatrices;
+	vk::Image directionalCascadedShadowMapsImage;
+	vma::Allocation directionalCascadedShadowMapsImageAllocation;
+	std::vector<vk::ImageView> directionalShadowMapImageViews;
+	std::vector<vk::Framebuffer> directionalShadowMapFramebuffers;
+	vk::ImageView directionalShadowMapArrayImageView;
+
 
 	vk::PipelineLayout averageLuminancePipelineLayout;
 	vk::Pipeline averageLuminancePipeline;
@@ -269,6 +280,7 @@ private:
 	void createShadowMapImage();
 	void createStaticShadowMapImage();
 	void createShadowMapRenderPass();
+	void createDirectionalShadowMapRenderPass();
 	void createStaticShadowMapRenderPass();
 	void createShadowMapPipeline();
 	void renderShadowMaps(uint32_t frameIndex);
@@ -284,6 +296,9 @@ private:
 
 	void renderLoop();
 	void drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);
+	
+	bool cullMesh(const Mesh& mesh);
+	bool cullMesh(const Mesh& mesh, const Camera& pov);
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 };

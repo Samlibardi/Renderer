@@ -5,7 +5,6 @@ layout(location=0) out vec3 outPosition;
 
 layout(set=1, binding=0) uniform cameraData {
 	vec4 cameraPos;
-	mat4 viewMatrix;
 	mat4 viewProjectionMatrix;
 	mat4 invViewProjectionMatrix;
 };

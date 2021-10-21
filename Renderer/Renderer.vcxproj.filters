@@ -13,52 +13,58 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Source Files\GLSL">
+      <UniqueIdentifier>{1a719114-8ae9-4565-82f8-c70e83b84fab}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\C++">
+      <UniqueIdentifier>{e78dd5ca-e100-41dd-aaa7-1878af65e54e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VulkanRenderer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Vertex.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Mesh.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="vma.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Object.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Texture.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="Animation.cpp">
+      <Filter>Source Files\C++</Filter>
     </ClCompile>
     <ClCompile Include="Camera.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Animation.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Node.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VulkanRendererShadow.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="VulkanRendererEnvironment.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="bindings\imgui_impl_vulkan.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="bindings\imgui_impl_glfw.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\C++</Filter>
     </ClCompile>
     <ClCompile Include="DirectionalLight.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="bindings\imgui_impl_glfw.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="bindings\imgui_impl_vulkan.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="Node.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="Object.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="Texture.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="vma.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="Vertex.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanRenderer.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanRendererEnvironment.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanRendererShadow.cpp">
+      <Filter>Source Files\C++</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -92,55 +98,55 @@
     <ClInclude Include="Node.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="bindings\imgui_impl_vulkan.h">
-      <Filter>Source Files</Filter>
+    <ClInclude Include="DirectionalLight.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="bindings\imgui_impl_glfw.h">
-      <Filter>Source Files</Filter>
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="DirectionalLight.h">
+    <ClInclude Include="bindings\imgui_impl_vulkan.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="shaders\averageLuminance.comp">
+      <Filter>Source Files\GLSL</Filter>
+    </None>
     <None Include="shaders\basic.frag">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\GLSL</Filter>
     </None>
     <None Include="shaders\basic.vert">
-      <Filter>Source Files</Filter>
-    </None>
-    <None Include="shaders\pbr.frag">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\GLSL</Filter>
     </None>
     <None Include="shaders\env.frag">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\GLSL</Filter>
     </None>
     <None Include="shaders\env.vert">
-      <Filter>Source Files</Filter>
-    </None>
-    <None Include="shaders\envbakediffuse.frag">
-      <Filter>Source Files</Filter>
-    </None>
-    <None Include="shaders\envbakespecular.frag">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\GLSL</Filter>
     </None>
     <None Include="shaders\envbake.vert">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\GLSL</Filter>
     </None>
-    <None Include="shaders\solid.frag">
-      <Filter>Source Files</Filter>
+    <None Include="shaders\envbakediffuse.frag">
+      <Filter>Source Files\GLSL</Filter>
     </None>
-    <None Include="shaders\shadowmap.vert">
-      <Filter>Source Files</Filter>
+    <None Include="shaders\envbakespecular.frag">
+      <Filter>Source Files\GLSL</Filter>
+    </None>
+    <None Include="shaders\pbr.frag">
+      <Filter>Source Files\GLSL</Filter>
     </None>
     <None Include="shaders\postfx.vert">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\GLSL</Filter>
+    </None>
+    <None Include="shaders\shadowmap.vert">
+      <Filter>Source Files\GLSL</Filter>
+    </None>
+    <None Include="shaders\solid.frag">
+      <Filter>Source Files\GLSL</Filter>
     </None>
     <None Include="shaders\tonemap.frag">
-      <Filter>Source Files</Filter>
-    </None>
-    <None Include="shaders\averageLuminance.comp">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\GLSL</Filter>
     </None>
   </ItemGroup>
 </Project>
