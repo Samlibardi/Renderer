@@ -628,7 +628,7 @@ void VulkanRenderer::createPipeline() {
 
 	std::vector<vk::DescriptorSetLayoutBinding> perFrameInFlightDescriptorSetBindings = {
 		vk::DescriptorSetLayoutBinding{0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
-		vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eFragment},
+		vk::DescriptorSetLayoutBinding{1, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
 	};
 	this->perFrameInFlightDescriptorSetLayout = this->device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo{ {}, perFrameInFlightDescriptorSetBindings });
 

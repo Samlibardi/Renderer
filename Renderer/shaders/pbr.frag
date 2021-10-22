@@ -12,6 +12,7 @@ layout(location = 1) in vec3 normal;
 layout(location = 2) in vec3 tangent;
 layout(location = 3) in vec3 bitangent;
 layout(location = 4) in vec2 uv;
+layout(location = 5) in vec3 directionalLightSpaceCoords[5];
 
 layout(location = 0) out vec4 outColor;
 
@@ -144,18 +145,19 @@ void main()
 
     //directional light
     {
-        CSMSplit csmSplit = csmSplits[0];
         int splitIndex = 0;
-        for(int i = 1; i < csmSplits.length(); i++) {
-            if(gl_FragCoord.z < csmSplits[i].depth)
+        vec3 lsCoords = directionalLightSpaceCoords[0];
+        for(; splitIndex < csmSplits.length(); splitIndex++) {
+            
+            lsCoords = directionalLightSpaceCoords[splitIndex];
+
+            if(min(lsCoords.x, lsCoords.y) > 1e-2f && max(lsCoords.x, lsCoords.y) < 1.0f - 1e-2f) {
                 break;
-            csmSplit = csmSplits[i];
-            splitIndex = i;
+            }
         }
 
-        vec4 directionalLightSpacePosition = csmSplits[splitIndex].viewproj * vec4(worldSpacePosition, 1.0f);
 
-        float shadowTest = texture(directionalShadowMapsSampler, vec4(directionalLightSpacePosition.xy/2 + 0.5f, splitIndex, directionalLightSpacePosition.z));
+        float shadowTest = texture(directionalShadowMapsSampler, vec4(lsCoords.xy, splitIndex, lsCoords.z));
 
         if(shadowTest > 1e-3) {
             vec3 L = directionalLight.direction;
