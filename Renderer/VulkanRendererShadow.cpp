@@ -245,25 +245,20 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 		return;
 
 	static const std::vector<vk::ClearValue> clearValues = { vk::ClearDepthStencilValue{1.0f} };
-	static const std::array<glm::mat4, 6> views = {
-		glm::rotate(glm::radians(90.0f), glm::vec3{0.0f, 1.0f, 0.0f}),
-		glm::rotate(glm::radians(-90.0f), glm::vec3{0.0f, 1.0f, 0.0f}),
-		glm::scale(glm::vec3{-1.0f, -1.0f, 1.0f}) * glm::rotate(glm::radians(-90.0f), glm::vec3{1.0f, 0.0f, 0.0f}),
-		glm::scale(glm::vec3{-1.0f, -1.0f, 1.0f}) * glm::rotate(glm::radians(90.0f), glm::vec3{1.0f, 0.0f, 0.0f}),
-		glm::rotate(glm::radians(180.0f), glm::vec3{0.0f, 1.0f, 0.0f}),
-		glm::mat4{1.0f},
+	static const std::array<glm::quat, 6> faceRotations = {
+		glm::quatLookAt(glm::vec3{+1.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 1.0f, 0.0f}),
+		glm::quatLookAt(glm::vec3{-1.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 1.0f, 0.0f}),
+		glm::quatLookAt(glm::vec3{0.0f, +1.0f, 0.0f}, glm::vec3{0.0f, 0.0f, -1.0f}),
+		glm::quatLookAt(glm::vec3{0.0f, -1.0f, 0.0f}, glm::vec3{0.0f, 0.0f, +1.0f}),
+		glm::quatLookAt(glm::vec3{0.0f, 0.0f, +1.0f}, glm::vec3{0.0f, 1.0f, 0.0f}),
+		glm::quatLookAt(glm::vec3{0.0f, 0.0f, -1.0f}, glm::vec3{0.0f, 1.0f, 0.0f}),
 	};
+	std::array<Camera, 6> facePovs{};
 
-	static const std::array<glm::vec3, 6> faceRotations = {
-		glm::vec3{0.0f, glm::radians(90.0f), 0.0f},
-		glm::vec3{0.0f, glm::radians(-90.0f), 0.0f},
-		glm::vec3{-90.0f, 180.0f, 0.0f},
-		glm::vec3{90.0f, 180.0f, 0.0f},
-		glm::vec3{0.0f, glm::radians(180.0f), 0.0f},
-		glm::vec3{0.0f, 0.0f, 0.0f},
-	};
-
-	static const  glm::mat4 proj = glm::scale(glm::vec3{ -1.0f, -1.0f, 1.0f }) * glm::perspective<float>(glm::radians(90.0f), 1, 0.1f, 100.0f);
+	for (size_t i = 0; i < 6; i++) {
+		facePovs[i] = Camera::Perspective({}, glm::eulerAngles(faceRotations[i]), 0.1f, 100.0f, glm::radians(90.0f), 1.0f);
+		facePovs[i].setCropMatrix(glm::scale(glm::vec3{ -1.0f, 1.0f, 1.0f }));
+	}
 
 	cb.setViewport(0, vk::Viewport{ 0.0f, 0.0f, static_cast<float>(this->_settings.pointShadowMapResolution), static_cast<float>(this->_settings.pointShadowMapResolution), 0.0f, 1.0f });
 	cb.setScissor(0, vk::Rect2D({ 0, 0 }, vk::Extent2D{ this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution }));
@@ -281,7 +276,8 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 		for (unsigned short j = 0; j < 6; j++) {
 			cb.beginRenderPass(vk::RenderPassBeginInfo{ this->staticShadowMapRenderPass, this->staticPointShadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
 
-			auto pov = Camera::Perspective(light->point, faceRotations[i], 0.1f, 100.0f, 90.0f, 1.0f);
+			auto& pov = facePovs[j];
+			pov.setPosition(cameraPos);
 			glm::mat4 viewproj = pov.viewProjMatrix();
 
 			auto culledMeshes = iter::filter([this, &pov](const std::shared_ptr<Mesh> mesh) {
@@ -322,7 +318,8 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 
 		for (unsigned short j = 0; j < 6; j++) {
 
-			auto pov = Camera::Perspective(light->point, faceRotations[i], 0.1f, 100.0f, 90.0f, 1.0f);
+			auto& pov = facePovs[j];
+			pov.setPosition(cameraPos);
 			glm::mat4 viewproj = pov.viewProjMatrix();
 
 			auto culledMeshes = iter::filter([this, &pov](const std::shared_ptr<Mesh> mesh) {

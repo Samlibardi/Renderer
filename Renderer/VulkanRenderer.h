@@ -89,7 +89,7 @@ private:
 
 	RendererSettings _settings;
 	
-	Camera _camera = Camera::Perspective(glm::vec3{ 0.0f }, glm::vec3{ 0.0f }, 0.1f, 60.0f, 40.0f, 1.0f);
+	Camera _camera = Camera::Perspective(glm::vec3{ 0.0f }, glm::vec3{ 0.0f }, 0.1f, 60.0f, glm::radians(40.0f), 1.0f);
 
 	vk::Instance vulkanInstance;
 	vk::SurfaceKHR surface;

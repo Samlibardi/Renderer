@@ -22,7 +22,7 @@ public:
 
 	Camera() {};
 	Camera(const Camera& rhs);
-	Camera(Camera&& rhs) = default;
+	Camera& operator=(const Camera& rhs);
 
 	static Camera Perspective(const glm::vec3 position, const glm::vec3 eulerRotation, const float near, const float far, const float vfov, const float aspectRatio);
 	static Camera Ortographic(const glm::vec3 position, const glm::vec3 eulerRotation, const float near, const float far, const float height, const float aspectRatio);
@@ -32,6 +32,7 @@ public:
 	glm::mat4 viewProjMatrix() const;
 	std::tuple<glm::vec3, glm::mat4> positionAndMatrix() const;
 	
+	void setPosition(glm::vec3 translation);
 	void move(glm::vec3 translation);
 	void lookAt(glm::vec3 focusPoint);
 	void dolly(float distance);

@@ -20,6 +20,26 @@ Camera::Camera(const Camera& rhs) :
 		this->_viewProjMatrix = rhs._viewProjMatrix;
 }
 
+Camera& Camera::operator=(const Camera& rhs) {
+	this->_position = rhs._position;
+	this->_eulerRotation = rhs._eulerRotation;
+	this->_near = rhs._near;
+	this->_far = rhs._far;
+	this->_fovOrHeight = rhs._fovOrHeight;
+	this->_aspectRatio = rhs._aspectRatio;
+	this->projMatrixDirty = rhs.projMatrixDirty;
+	this->viewMatrixDirty = rhs.viewMatrixDirty;
+	this->viewProjMatrixDirty = rhs.viewProjMatrixDirty;
+	this->cameraType = rhs.cameraType;
+	if (!rhs.projMatrixDirty)
+		this->_projMatrix = rhs._projMatrix;
+	if (!rhs.viewMatrixDirty)
+		this->_viewMatrix = rhs._viewMatrix;
+	if (!rhs.viewProjMatrixDirty)
+		this->_viewProjMatrix = rhs._viewProjMatrix;
+	return *this;
+}
+
 Camera Camera::Perspective(const glm::vec3 position, const glm::vec3 eulerRotation, const float near, const float far, const float vfov, const float aspectRatio) {
 	Camera c{};
 	c.cameraType = CameraType::ePerspective;
@@ -78,8 +98,16 @@ std::tuple<glm::vec3, glm::mat4> Camera::positionAndMatrix() const {
 	return rv;
 }
 
-void Camera::move(glm::vec3 translation)
-{
+void Camera::setPosition(glm::vec3 translation) {
+	this->mutex.lock();
+
+	this->_viewMatrix = this->_viewMatrix * glm::translate(this->_position-translation);
+	this->_position = translation;
+	this->viewProjMatrixDirty = true;
+	this->mutex.unlock();
+}
+
+void Camera::move(glm::vec3 translation) {
 	this->mutex.lock();
 	translation = glm::mat3(glm::inverse(this->_viewMatrix)) * translation;
 
@@ -99,14 +127,14 @@ void Camera::dolly(float distance) {
 
 void Camera::tilt(glm::vec2 yawPitch) {
 	this->mutex.lock();
-	this->_eulerRotation += glm::vec3(0.0f, yawPitch.y, yawPitch.x);
+	this->_eulerRotation += glm::vec3{ yawPitch.y, yawPitch.x, 0.0f };
 	this->viewMatrixDirty = true;
 	this->viewProjMatrixDirty = true;
 	this->mutex.unlock();
 }
 
 void Camera::rebuildViewMatrixUnsafe() const {
-	this->_viewMatrix = glm::rotate(-this->_eulerRotation.x, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::rotate(-this->_eulerRotation.y, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(-this->_eulerRotation.z, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::translate(-this->_position);
+	this->_viewMatrix = glm::rotate(-this->_eulerRotation.x, glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(-this->_eulerRotation.y, glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::rotate(-this->_eulerRotation.z, glm::vec3{ 0.0f, 0.0f, 1.0f }) * glm::translate(-this->_position);
 	this->viewMatrixDirty = false;
 }
 float Camera::near() const {
@@ -168,7 +196,7 @@ void Camera::setAspectRatio(float ar) {
 void Camera::rebuildProjMatrixUnsafe() const {
 	switch (this->cameraType) {
 	case CameraType::ePerspective:
-		this->_projMatrix = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::perspective(glm::radians(this->_fovOrHeight), this->_aspectRatio, this->_near, this->_far);
+		this->_projMatrix = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::perspective(this->_fovOrHeight, this->_aspectRatio, this->_near, this->_far);
 		break;
 	case CameraType::eOrthographic:
 		this->_projMatrix = glm::scale(glm::vec3{ 1.0f, -1.0f, 1.0f }) * glm::ortho(-this->_fovOrHeight * this->_aspectRatio / 2, this->_fovOrHeight * this->_aspectRatio / 2, -this->_fovOrHeight, this->_fovOrHeight, this->_near, this->_far);

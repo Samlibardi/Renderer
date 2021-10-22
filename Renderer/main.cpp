@@ -345,13 +345,13 @@ int main(size_t argc, const char* argv[]) {
 
 	std::vector<PointLight> pointLights{ 
 		{{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}},
-		//{{4.0f, 1.15f, -1.74f}, {70.0f, 24.0f, 2.0f}},
-		//{{4.0f, 1.15f, 1.15f}, {72.0f, 26.0f, 1.0f}},
-		//{{-5.0f, 1.15f, 1.15f}, {67.0f, 22.0f, 2.0f}},
-		//{{-5.0f, 1.15f, -1.74f}, {77.0f, 24.0f, 3.0f}},
+		{{4.0f, 1.15f, -1.74f}, {70.0f, 24.0f, 2.0f}},
+		{{4.0f, 1.15f, 1.15f}, {72.0f, 26.0f, 1.0f}},
+		{{-5.0f, 1.15f, 1.15f}, {67.0f, 22.0f, 2.0f}},
+		{{-5.0f, 1.15f, -1.74f}, {77.0f, 24.0f, 3.0f}},
 	};
 
-	DirectionalLight directionalLight = { {0.0f, 100.0f, 0.0f}, {100.0f, 80.0f, 20.0f}, glm::quatLookAt(glm::normalize(glm::vec3{ 0.05f, -1.0f, 0.05f }), glm::vec3{ 1.0f, 0.0f, 0.0f }) };
+	DirectionalLight directionalLight = { {0.0f, 100.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, glm::quatLookAt(glm::normalize(glm::vec3{ 0.05f, -1.0f, 0.05f }), glm::vec3{ 1.0f, 0.0f, 0.0f }) };
 	/*for (int i = 0; i < 5; i++) {
 		const float angle = glm::radians(360.0f) / 5 * i;
 		const float radius = 3.0f;
