@@ -420,7 +420,8 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 	if (this->depthAttachmentFormat == vk::Format::eUndefined)
 		throw std::runtime_error("No Supported Depth Attachment Formats Available");
 
-	std::array<vk::Format, 3> envMapFormatCandidates = {
+	std::array<vk::Format, 4> envMapFormatCandidates = {
+		vk::Format::eB10G11R11UfloatPack32,
 		vk::Format::eR16G16B16A16Sfloat,
 		vk::Format::eR8G8B8A8Srgb,
 		vk::Format::eR8G8B8A8Unorm,
@@ -436,24 +437,70 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 			continue;
 		}
 	}
+
+	std::array<vk::Format, 2> bloomFormatCandidates = {
+		vk::Format::eB10G11R11UfloatPack32,
+		vk::Format::eR16G16B16A16Sfloat,
+	};
+
+	for (auto& format : bloomFormatCandidates) {
+		try {
+			physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage, {});
+			this->bloomAttachmentFormat = format;
+			break;
+		}
+		catch (vk::FormatNotSupportedError e) {
+			continue;
+		}
+	}
+
+	if (this->bloomAttachmentFormat == vk::Format::eUndefined)
+		throw std::runtime_error("No Supported Bloom Attachment Formats Available");
 }
 
 void VulkanRenderer::createSwapchainAndAttachmentImages() {
 	auto surfaceCap = this->physicalDevice.getSurfaceCapabilitiesKHR(this->surface);
 	auto surfaceFormats = this->physicalDevice.getSurfaceFormatsKHR(this->surface);
+	
+	bool hdrCapable = false;
 
-	vk::SurfaceFormatKHR selectedFormat = surfaceFormats[0];
-	if (this->_settings.hdrEnabled) {
-		for (auto& format : surfaceFormats) {
-			if (format.colorSpace == vk::ColorSpaceKHR::eHdr10St2084EXT) {
-				selectedFormat = format;
-				break;
-			}
-			else if (format.colorSpace == vk::ColorSpaceKHR::eBt2020LinearEXT) {
-				selectedFormat = format;
-			}
+	for (auto& surfaceFormat : surfaceFormats) {
+		if (surfaceFormat.colorSpace != vk::ColorSpaceKHR::eSrgbNonlinear) {
+			hdrCapable = true;
+			break;
 		}
 	}
+	
+	bool useHdr = this->_settings.hdrEnabled && hdrCapable;
+	auto swapchainFormatPriorities = useHdr ? std::map<vk::Format, uint8_t>{
+		std::pair{ vk::Format::eB10G11R11UfloatPack32, 3 },
+		std::pair{ vk::Format::eR16G16B16Sfloat, 2 },
+		std::pair{ vk::Format::eR16G16B16A16Sfloat, 1 },
+	} : std::map<vk::Format, uint8_t>{
+		std::pair{ vk::Format::eR8G8B8Unorm, 2 },
+		std::pair{ vk::Format::eR8G8B8A8Unorm, 1 },
+	};
+
+	auto swapchainColorspacePriorities = useHdr ? std::map<vk::ColorSpaceKHR, uint8_t>{
+		std::pair{ vk::ColorSpaceKHR::eHdr10St2084EXT, 4 },
+		std::pair{ vk::ColorSpaceKHR::eHdr10HlgEXT, 3 },
+		std::pair{ vk::ColorSpaceKHR::eBt2020LinearEXT, 2 },
+		std::pair{ vk::ColorSpaceKHR::eSrgbNonlinear, 1 },
+	} : std::map<vk::ColorSpaceKHR, uint8_t>{
+		std::pair{ vk::ColorSpaceKHR::eSrgbNonlinear, 1 },
+	};
+
+	vk::SurfaceFormatKHR selectedFormat = surfaceFormats[0];
+	uint8_t selectedFormatPriority = 0, selectedColorspacePriority = 0;
+	for (auto& surfaceFormat : surfaceFormats) {
+		if (swapchainFormatPriorities[surfaceFormat.format] >= selectedFormatPriority &&
+			swapchainColorspacePriorities[surfaceFormat.colorSpace] >= selectedColorspacePriority) {
+			selectedFormat = surfaceFormat;
+			selectedFormatPriority = swapchainFormatPriorities[surfaceFormat.format];
+			selectedColorspacePriority = swapchainColorspacePriorities[surfaceFormat.colorSpace];
+		}
+	}
+
 
 	vk::SwapchainCreateInfoKHR createInfo{ {}, this->surface, std::max(surfaceCap.minImageCount, FRAMES_IN_FLIGHT), selectedFormat.format, selectedFormat.colorSpace, surfaceCap.currentExtent, 1, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {}, vk::SurfaceTransformFlagBitsKHR::eIdentity, vk::CompositeAlphaFlagBitsKHR::eOpaque, this->_settings.vsync ? vk::PresentModeKHR::eFifo : vk::PresentModeKHR::eImmediate };
 	this->swapchain = this->device.createSwapchainKHR(createInfo);

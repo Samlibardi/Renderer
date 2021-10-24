@@ -31,8 +31,8 @@ typedef struct RendererSettings {
 	bool hdrEnabled = true;
 
 	bool dynamicShadowsEnabled = true;
-	uint32_t pointShadowMapResolution = 1024u;
-	uint32_t directionalShadowMapResolution = 4096u;
+	uint32_t pointShadowMapResolution = 512u;
+	uint32_t directionalShadowMapResolution = 2048u;
 
 	bool vsync = false;
 
@@ -104,6 +104,7 @@ private:
 	vk::Format colorAttachmentFormat = vk::Format::eUndefined;
 	vk::Format depthAttachmentFormat = vk::Format::eUndefined;
 	vk::Format envMapFormat = vk::Format::eUndefined;
+	vk::Format bloomAttachmentFormat = vk::Format::eUndefined;
 
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::ImageView> swapchainImageViews;
@@ -121,6 +122,9 @@ private:
 	vk::Image luminanceImage;
 	vk::ImageView luminanceImageView;
 	vma::Allocation luminanceImageAllocation;
+
+	vk::Image bloomImage;
+	vma::Allocation bloomImageAllocation;
 
 	vk::CommandPool commandPool;
 	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> swapchainCommandBuffers;
