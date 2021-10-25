@@ -42,7 +42,7 @@ void main() {
 
     imageStore(outputLogLuminanceImage, samplePos, vec4(log2(2 * color.r + 3 * color.g + color.b) - log2(6), 0.0f, 0.0f, 1.0f));
 
-    color = mix(color, bloomColor, 0.02f);
+    color = mix(color, bloomColor, 0.04f);
 
     color = tone(color)/tone(linWhitePoint);
 
