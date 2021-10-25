@@ -1,0 +1,29 @@
+#version 450
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (set=0, binding=0) uniform sampler2D inputImage;
+layout (set=0, binding=1, r11f_g11f_b10f) uniform image2D outputImage;
+
+void main() {
+    const ivec2 samplePos = ivec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy);
+
+    if(samplePos.x > imageSize(outputImage).x || samplePos.y > imageSize(outputImage).y)
+        return;
+
+    ivec2 upsamplePos = samplePos / 2;
+
+    vec3 acc = imageLoad(outputImage, samplePos).rgb;
+
+    acc += 1.0f / 16 * texture(inputImage, vec2(upsamplePos.x - 1, upsamplePos.y - 1)).rgb;
+    acc += 2.0f / 16 * texture(inputImage, vec2(upsamplePos.x + 0, upsamplePos.y - 1)).rgb;
+    acc += 1.0f / 16 * texture(inputImage, vec2(upsamplePos.x + 1, upsamplePos.y - 1)).rgb;
+    acc += 2.0f / 16 * texture(inputImage, vec2(upsamplePos.x - 1, upsamplePos.y + 0)).rgb;
+    acc += 4.0f / 16 * texture(inputImage, vec2(upsamplePos.x + 0, upsamplePos.y + 0)).rgb;
+    acc += 2.0f / 16 * texture(inputImage, vec2(upsamplePos.x + 1, upsamplePos.y + 0)).rgb;
+    acc += 1.0f / 16 * texture(inputImage, vec2(upsamplePos.x - 1, upsamplePos.y + 1)).rgb;
+    acc += 2.0f / 16 * texture(inputImage, vec2(upsamplePos.x + 0, upsamplePos.y + 1)).rgb;
+    acc += 1.0f / 16 * texture(inputImage, vec2(upsamplePos.x + 1, upsamplePos.y + 1)).rgb;
+
+    imageStore(outputImage, samplePos, vec4(acc, 1.0f));
+}

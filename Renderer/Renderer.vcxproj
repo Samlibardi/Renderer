@@ -73,6 +73,7 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="conanbuildinfo.props" />
+    <Import Project="..\x64\Release\.conan\conanbuildinfo.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -215,8 +216,10 @@
     <ClCompile Include="Vertex.cpp" />
     <ClCompile Include="vma.cpp" />
     <ClCompile Include="VulkanRenderer.cpp" />
+    <ClCompile Include="VulkanRendererBloom.cpp" />
     <ClCompile Include="VulkanRendererEnvironment.cpp" />
     <ClCompile Include="VulkanRendererShadow.cpp" />
+    <ClCompile Include="VulkanRendererTonemap.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Animation.h" />
@@ -237,6 +240,8 @@
     <None Include="shaders\averageLuminance.comp" />
     <None Include="shaders\basic.frag" />
     <None Include="shaders\basic.vert" />
+    <None Include="shaders\bloomDownsample.comp" />
+    <None Include="shaders\bloomUpsample.comp" />
     <None Include="shaders\env.frag" />
     <None Include="shaders\env.vert" />
     <None Include="shaders\envbake.vert" />
@@ -246,7 +251,7 @@
     <None Include="shaders\postfx.vert" />
     <None Include="shaders\shadowmap.vert" />
     <None Include="shaders\solid.frag" />
-    <None Include="shaders\tonemap.frag" />
+    <None Include="shaders\tonemap.comp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

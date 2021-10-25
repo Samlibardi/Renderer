@@ -107,9 +107,9 @@ private:
 	vk::Format bloomAttachmentFormat = vk::Format::eUndefined;
 
 	vk::SwapchainKHR swapchain;
+	std::vector<vk::Image> swapchainImages;
 	std::vector<vk::ImageView> swapchainImageViews;
 	vk::Extent2D swapchainExtent;
-	std::vector<vk::Framebuffer> swapchainFramebuffers;
 
 	vk::Image colorImage;
 	vk::ImageView colorImageView;
@@ -123,11 +123,10 @@ private:
 	vk::ImageView luminanceImageView;
 	vma::Allocation luminanceImageAllocation;
 
-	vk::Image bloomImage;
-	vma::Allocation bloomImageAllocation;
+	vk::Framebuffer mainFramebuffer;
 
 	vk::CommandPool commandPool;
-	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> swapchainCommandBuffers;
+	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> mainCommandBuffers;
 
 	vk::RenderPass renderPass;
 	vk::PipelineCache pipelineCache;
@@ -137,6 +136,9 @@ private:
 	vk::Pipeline wireframePipeline;
 	vk::PipelineLayout tonemapPipelineLayout;
 	vk::Pipeline tonemapPipeline;
+	vk::Sampler tonemapSampler;
+
+	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> tonemapCommandBuffers;
 
 	vk::DescriptorPool descriptorPool;
 	vk::DescriptorSetLayout globalDescriptorSetLayout;
@@ -147,7 +149,7 @@ private:
 	vk::DescriptorSetLayout pbrDescriptorSetLayout;
 	std::array<vk::DescriptorSet, FRAMES_IN_FLIGHT> perFrameInFlightDescriptorSets;
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
-	vk::DescriptorSet tonemapDescriptorSet;
+	std::vector<vk::DescriptorSet> tonemapDescriptorSets;
 
 	vk::Buffer vertexIndexBuffer;
 	vma::Allocation vertexIndexBufferAllocation;
@@ -196,8 +198,10 @@ private:
 
 	std::array<vk::Fence, FRAMES_IN_FLIGHT> frameFences;
 	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> imageAcquiredSemaphores;
-	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> renderFinishedSemaphores;
+	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> mainRenderPassFinishedSemaphores;
 	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> shadowPassFinishedSemaphores;
+	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> bloomPassFinishedSemaphores;
+	std::array<vk::Semaphore, FRAMES_IN_FLIGHT> compositionPassFinishedSemaphores;
 
 	std::thread renderThread;
 
@@ -264,6 +268,22 @@ private:
 
 	float temporalLuminance = 0.0f;
 
+	vk::PipelineLayout bloomPipelineLayout;
+	vk::Pipeline bloomDownsamplePipeline;
+	vk::Pipeline bloomUpsamplePipeline;
+	vk::DescriptorSetLayout bloomDescriptorSetLayout;
+	std::vector<vk::DescriptorSet> bloomDownsampleDescriptorSets;
+	std::vector<vk::DescriptorSet> bloomUpsampleDescriptorSets;
+
+	std::array<vk::CommandBuffer, FRAMES_IN_FLIGHT> bloomCommandBuffers;
+
+	vk::Image bloomImage;
+	vma::Allocation bloomImageAllocation;
+	uint32_t bloomMipLevels = 6;
+	vk::Sampler bloomDownsampleSampler;
+	vk::Sampler bloomUpsampleSampler;
+	std::vector<vk::ImageView> bloomImageViews;
+
 	void setPhysicalDevice(vk::PhysicalDevice physicalDevice);
 
 	void createSwapchainAndAttachmentImages();
@@ -280,6 +300,10 @@ private:
 	void createAverageLuminancePipeline();
 	void createAverageLuminanceImages();
 	void recordAverageLuminanceCommands();
+
+	void createBloomPipelines();
+	void createBloomImage();
+	void recordBloomCommandBuffers();
 
 	void createShadowMapImage();
 	void createStaticShadowMapImage();

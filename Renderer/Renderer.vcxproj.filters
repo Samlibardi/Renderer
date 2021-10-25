@@ -66,6 +66,12 @@
     <ClCompile Include="VulkanRendererShadow.cpp">
       <Filter>Source Files\C++</Filter>
     </ClCompile>
+    <ClCompile Include="VulkanRendererBloom.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
+    <ClCompile Include="VulkanRendererTonemap.cpp">
+      <Filter>Source Files\C++</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="VulkanRenderer.h">
@@ -145,7 +151,13 @@
     <None Include="shaders\solid.frag">
       <Filter>Source Files\GLSL</Filter>
     </None>
-    <None Include="shaders\tonemap.frag">
+    <None Include="shaders\bloomDownsample.comp">
+      <Filter>Source Files\GLSL</Filter>
+    </None>
+    <None Include="shaders\bloomUpsample.comp">
+      <Filter>Source Files\GLSL</Filter>
+    </None>
+    <None Include="shaders\tonemap.comp">
       <Filter>Source Files\GLSL</Filter>
     </None>
   </ItemGroup>

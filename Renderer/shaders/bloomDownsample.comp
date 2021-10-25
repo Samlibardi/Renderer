@@ -1,0 +1,34 @@
+#version 450
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout (set=0, binding=0) uniform sampler2D inputImage;
+layout (set=0, binding=1, r11f_g11f_b10f) uniform writeonly image2D outputImage;
+
+void main() {
+    const ivec2 samplePos = ivec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + gl_LocalInvocationID.xy);
+
+    if(samplePos.x > imageSize(outputImage).x || samplePos.y > imageSize(outputImage).y)
+        return;
+
+    ivec2 downsamplePos = samplePos * 2;
+
+    vec3 acc = vec3(0.0f);
+    acc += 0.5 / 4 * texture(inputImage, vec2(downsamplePos.x + 2, downsamplePos.y + 2) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.5 / 4 * texture(inputImage, vec2(downsamplePos.x + 2, downsamplePos.y - 0) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.5 / 4 * texture(inputImage, vec2(downsamplePos.x - 0, downsamplePos.y + 2) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.5 / 4 * texture(inputImage, vec2(downsamplePos.x - 0, downsamplePos.y - 0) - vec2(0.5f, 0.5f)).rgb;
+
+    acc += 0.125 / 4 * texture(inputImage, vec2(downsamplePos.x - 1, downsamplePos.y - 1) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.250 / 4 * texture(inputImage, vec2(downsamplePos.x + 1, downsamplePos.y - 1) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.125 / 4 * texture(inputImage, vec2(downsamplePos.x + 3, downsamplePos.y - 1) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.250 / 4 * texture(inputImage, vec2(downsamplePos.x + 3, downsamplePos.y + 1) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.125 / 4 * texture(inputImage, vec2(downsamplePos.x + 3, downsamplePos.y + 3) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.250 / 4 * texture(inputImage, vec2(downsamplePos.x + 1, downsamplePos.y + 3) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.125 / 4 * texture(inputImage, vec2(downsamplePos.x - 1, downsamplePos.y + 3) - vec2(0.5f, 0.5f)).rgb;
+    acc += 0.250 / 4 * texture(inputImage, vec2(downsamplePos.x - 1, downsamplePos.y + 1) - vec2(0.5f, 0.5f)).rgb;
+    
+    acc += 0.5 / 4 * texture(inputImage, vec2(downsamplePos.x + 1, downsamplePos.y + 1) - vec2(0.5f, 0.5f)).rgb;
+
+    imageStore(outputImage, samplePos, vec4(acc, 1.0f));
+}
