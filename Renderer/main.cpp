@@ -12,10 +12,6 @@
 
 #include <vkfw/vkfw.hpp>
 
-#include <imgui.h>
-#include "bindings/imgui_impl_glfw.h"
-#include "bindings/imgui_impl_vulkan.h"
-
 #include "VulkanRenderer.h"
 
 #define TINYGLTF_IMPLEMENTATION
