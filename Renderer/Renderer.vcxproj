@@ -221,8 +221,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Animation.h" />
-    <ClInclude Include="bindings\imgui_impl_glfw.h" />
-    <ClInclude Include="bindings\imgui_impl_vulkan.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="DirectionalLight.h" />
     <ClInclude Include="InterpolationTree.h" />
