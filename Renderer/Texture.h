@@ -1,6 +1,6 @@
 #pragma once
 
-#include <map>
+#include <unordered_map>
 #include <memory>
 
 #include <vulkan/vulkan.hpp>
@@ -56,7 +56,7 @@ public:
 	vma::Allocation imageAllocation() { return this->core->_imageAllocation; };
 
 private:
-	inline static std::map<std::string, std::shared_ptr<TextureCore>> textureCache{};
+	inline static std::unordered_map<std::string, std::shared_ptr<TextureCore>> textureCache{};
 	std::string path;
 	std::shared_ptr<TextureCore> core;
 };
