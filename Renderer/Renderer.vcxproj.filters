@@ -30,12 +30,6 @@
     <ClCompile Include="DirectionalLight.cpp">
       <Filter>Source Files\C++</Filter>
     </ClCompile>
-    <ClCompile Include="bindings\imgui_impl_glfw.cpp">
-      <Filter>Source Files\C++</Filter>
-    </ClCompile>
-    <ClCompile Include="bindings\imgui_impl_vulkan.cpp">
-      <Filter>Source Files\C++</Filter>
-    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>Source Files\C++</Filter>
     </ClCompile>
