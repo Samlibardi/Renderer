@@ -460,6 +460,28 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 
 	if (this->bloomAttachmentFormat == vk::Format::eUndefined)
 		throw std::runtime_error("No Supported Bloom Attachment Formats Available");
+
+
+	std::array<vk::Format, 5> luminanceFormatCandidates = {
+		vk::Format::eR32Sfloat,
+		vk::Format::eR16Sfloat,
+		vk::Format::eR32G32Sfloat,
+		vk::Format::eR32G32B32Sfloat,
+		vk::Format::eR32G32B32A32Sfloat,
+	};
+
+	for (auto& format : luminanceFormatCandidates) {
+		try {
+			physicalDevice.getImageFormatProperties(format, vk::ImageType::e2D, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst, {});
+			this->averageLuminanceFormat = format;
+			break;
+		} catch (vk::FormatNotSupportedError e) {
+			continue;
+		}
+	}
+
+	if (this->averageLuminanceFormat == vk::Format::eUndefined)
+		throw std::runtime_error("No Supported Luminance Formats Available");
 }
 
 void VulkanRenderer::createSwapchainAndAttachmentImages() {
@@ -899,11 +921,10 @@ void VulkanRenderer::renderLoop() {
 		std::array<vk::PipelineStageFlags, 1> bloomWaitStageFlags = { vk::PipelineStageFlagBits::eComputeShader };
 		this->graphicsQueue.submit(vk::SubmitInfo{ bloomAwaitSemaphores, bloomWaitStageFlags, this->bloomCommandBuffers[frameIndex], this->bloomPassFinishedSemaphores[frameIndex] });
 
-		float avgLuminance = *reinterpret_cast<float*>(this->allocator.mapMemory(this->averageLuminance1ImageAllocation));
-		avgLuminance = std::exp2f(avgLuminance);
-		this->allocator.unmapMemory(this->averageLuminance1ImageAllocation);
-
-		this->temporalLuminance = this->temporalLuminance + (avgLuminance - this->temporalLuminance) * (1 - std::exp(-deltaTime * 1.0f));
+		float avgLogLuminance = *reinterpret_cast<float*>(this->allocator.mapMemory(this->averageLuminanceHostBufferAllocation));
+		this->allocator.unmapMemory(this->averageLuminanceHostBufferAllocation);
+		
+		this->temporalLuminance = this->temporalLuminance + (std::exp2f(avgLogLuminance) - this->temporalLuminance) * (1 - std::exp(-deltaTime * 1.0f));
 
 		float exposure = 1.03f - 2 / (std::log2(this->temporalLuminance + 1.0f) + 2);
 		exposure = 0.18 / exposure + this->_settings.exposureBias;
@@ -956,15 +977,16 @@ void VulkanRenderer::createAverageLuminancePipeline() {
 }
 
 void VulkanRenderer::createAverageLuminanceImages() {
-	std::tie(this->averageLuminance256Image, this->averageLuminance256ImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eR32Sfloat, vk::Extent3D{256, 256, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, {}}, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
-	std::tie(this->averageLuminance16Image, this->averageLuminance16ImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eR32Sfloat, vk::Extent3D{16, 16, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, {}}, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
-	std::tie(this->averageLuminance1Image, this->averageLuminance1ImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eR32Sfloat, vk::Extent3D{1, 1, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eLinear, vk::ImageUsageFlagBits::eStorage, vk::SharingMode::eExclusive, {}}, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
+	std::tie(this->averageLuminance256Image, this->averageLuminance256ImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->averageLuminanceFormat, vk::Extent3D{256, 256, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, {}}, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	std::tie(this->averageLuminance16Image, this->averageLuminance16ImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->averageLuminanceFormat, vk::Extent3D{16, 16, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	std::tie(this->averageLuminance1Image, this->averageLuminance1ImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->averageLuminanceFormat, vk::Extent3D{1, 1, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	std::tie(this->averageLuminanceHostBuffer, this->averageLuminanceHostBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, 4, vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuToCpu });
 
-	this->averageLuminance512ImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->averageLuminance256Image, vk::ImageViewType::e2D, vk::Format::eR32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
-	this->averageLuminance16ImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->averageLuminance16Image, vk::ImageViewType::e2D, vk::Format::eR32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
-	this->averageLuminance1ImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->averageLuminance1Image, vk::ImageViewType::e2D, vk::Format::eR32Sfloat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
+	this->averageLuminance256ImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->averageLuminance256Image, vk::ImageViewType::e2D, this->averageLuminanceFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
+	this->averageLuminance16ImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->averageLuminance16Image, vk::ImageViewType::e2D, this->averageLuminanceFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
+	this->averageLuminance1ImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->averageLuminance1Image, vk::ImageViewType::e2D, this->averageLuminanceFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
 
-	std::vector<vk::DescriptorImageInfo> luminance256ImageInfos = { vk::DescriptorImageInfo{this->averageLuminanceSampler, this->averageLuminance512ImageView, vk::ImageLayout::eShaderReadOnlyOptimal } };
+	std::vector<vk::DescriptorImageInfo> luminance256ImageInfos = { vk::DescriptorImageInfo{this->averageLuminanceSampler, this->averageLuminance256ImageView, vk::ImageLayout::eShaderReadOnlyOptimal } };
 	std::vector<vk::DescriptorImageInfo> luminance16WriteImageInfos = { vk::DescriptorImageInfo{{}, this->averageLuminance16ImageView, vk::ImageLayout::eGeneral } };
 	std::vector<vk::DescriptorImageInfo> luminance16ReadImageInfos = { vk::DescriptorImageInfo{this->averageLuminanceSampler, this->averageLuminance16ImageView, vk::ImageLayout::eShaderReadOnlyOptimal } };
 	std::vector<vk::DescriptorImageInfo> luminance1WriteImageInfos = { vk::DescriptorImageInfo{{}, this->averageLuminance1ImageView, vk::ImageLayout::eGeneral } };
@@ -1006,6 +1028,9 @@ void VulkanRenderer::recordAverageLuminanceCommands() {
 
 		cb.bindDescriptorSets(vk::PipelineBindPoint::eCompute, this->averageLuminancePipelineLayout, 0, this->averageLuminanceDescriptorSets[1], {});
 		cb.dispatch(1, 1, 1);
+
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eTransferRead, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->averageLuminance1Image, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
+		cb.copyImageToBuffer(this->averageLuminance1Image, vk::ImageLayout::eTransferSrcOptimal, this->averageLuminanceHostBuffer, vk::BufferImageCopy{0, 1, 1, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, vk::Offset3D{ 0, 0, 0 }, vk::Extent3D{ 1, 1, 1 } });
 
 		cb.end();
 

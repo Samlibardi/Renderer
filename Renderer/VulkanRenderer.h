@@ -28,11 +28,11 @@ typedef struct TextureInfo {
 } TextureInfo;
 
 typedef struct RendererSettings {
-	bool hdrEnabled = true;
+	bool hdrEnabled = false;
 
 	bool dynamicShadowsEnabled = true;
-	uint32_t pointShadowMapResolution = 512u;
-	uint32_t directionalShadowMapResolution = 2048u;
+	uint32_t pointShadowMapResolution = 1024u;
+	uint32_t directionalShadowMapResolution = 4096u;
 
 	bool vsync = false;
 
@@ -105,6 +105,7 @@ private:
 	vk::Format depthAttachmentFormat = vk::Format::eUndefined;
 	vk::Format envMapFormat = vk::Format::eUndefined;
 	vk::Format bloomAttachmentFormat = vk::Format::eUndefined;
+	vk::Format averageLuminanceFormat = vk::Format::eUndefined;
 
 	vk::SwapchainKHR swapchain;
 	std::vector<vk::Image> swapchainImages;
@@ -258,13 +259,16 @@ private:
 
 	vk::Image averageLuminance256Image;
 	vma::Allocation averageLuminance256ImageAllocation;
-	vk::ImageView averageLuminance512ImageView;
+	vk::ImageView averageLuminance256ImageView;
 	vk::Image averageLuminance16Image;
 	vma::Allocation averageLuminance16ImageAllocation;
 	vk::ImageView averageLuminance16ImageView;
 	vk::Image averageLuminance1Image;
 	vma::Allocation averageLuminance1ImageAllocation;
 	vk::ImageView averageLuminance1ImageView;
+	vk::Buffer averageLuminanceHostBuffer;
+	vma::Allocation averageLuminanceHostBufferAllocation;
+
 
 	float temporalLuminance = 0.0f;
 
