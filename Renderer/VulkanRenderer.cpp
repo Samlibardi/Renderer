@@ -209,7 +209,12 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const
 
 	size_t pointBufferSize = pointLights.size() * sizeof(PointLightShaderData);
 	size_t directionalBufferSize = sizeof(DirectionalLightShaderData);
-	size_t bufferSize = pointBufferSize + directionalBufferSize;
+
+	vk::DeviceSize minBufferAlignment = this->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
+	vk::DeviceSize pointBufferAlignedSize = (pointBufferSize / minBufferAlignment + (pointBufferSize % minBufferAlignment ? 1 : 0)) * minBufferAlignment;
+	vk::DeviceSize directionalBufferAlignedSize = (directionalBufferSize / minBufferAlignment + (directionalBufferSize % minBufferAlignment ? 1 : 0)) * minBufferAlignment;
+
+	size_t bufferSize = pointBufferAlignedSize + directionalBufferAlignedSize;
 	std::tie(this->lightsBuffer, this->lightsBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 
 	auto [lightsStagingBuffer, lightsStagingBufferAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
@@ -235,9 +240,8 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const
 	this->device.freeCommandBuffers(commandPool, cb);
 	this->device.destroyFence(fence);
 
-
-	std::vector<vk::DescriptorBufferInfo> pointBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, 0, pointBufferSize } };
-	std::vector<vk::DescriptorBufferInfo> directionalBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, pointBufferSize, directionalBufferSize } };
+	std::vector<vk::DescriptorBufferInfo> pointBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, 0, pointBufferAlignedSize } };
+	std::vector<vk::DescriptorBufferInfo> directionalBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, pointBufferAlignedSize, directionalBufferAlignedSize } };
 	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = { 
 		vk::WriteDescriptorSet{ this->globalDescriptorSet, 0, 0, vk::DescriptorType::eStorageBuffer, {}, pointBufferInfos },
 		vk::WriteDescriptorSet{ this->globalDescriptorSet, 1, 0, vk::DescriptorType::eUniformBuffer, {}, directionalBufferInfos }
@@ -279,8 +283,8 @@ void VulkanRenderer::setMeshes(const std::vector<Mesh>& meshes) {
 	}
 
 	vk::DeviceSize minBufferAlignment = this->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
-	vk::DeviceSize pbrAlignment = std::max(sizeof(PBRInfo), minBufferAlignment);
-	vk::DeviceSize alphaAlignment = std::max(sizeof(AlphaInfo), minBufferAlignment);
+	vk::DeviceSize pbrAlignment = (sizeof(PBRInfo) / minBufferAlignment + (sizeof(PBRInfo) % minBufferAlignment ? 1 : 0)) * minBufferAlignment;
+	vk::DeviceSize alphaAlignment = (sizeof(AlphaInfo) / minBufferAlignment + (sizeof(AlphaInfo) % minBufferAlignment ? 1 : 0)) * minBufferAlignment;
 
 	size_t pbrBufferSize = meshes.size() * pbrAlignment;
 	this->allocator.destroyBuffer(this->pbrBuffer, this->pbrBufferAllocation);
@@ -924,7 +928,7 @@ void VulkanRenderer::renderLoop() {
 			cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->blendPipeline);
 			this->drawMeshes(this->nonOpaqueMeshes, cb, frameIndex, viewproj, cameraPos, true, MeshSortingMode::eBackToFront);
 		}
-
+		
 		cb.endRenderPass();
 		cb.end();
 
