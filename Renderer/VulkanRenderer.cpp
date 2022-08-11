@@ -883,6 +883,7 @@ void VulkanRenderer::renderLoop() {
 		this->device.resetFences(this->frameFences[frameIndex]);
 
 		auto newFrameTime = std::chrono::high_resolution_clock::now();
+		// time since last frame in nanoseconds
 		double deltaTime = std::chrono::duration<double>(newFrameTime - frameTime).count();
 		runningTime += deltaTime;
 		frameTime = newFrameTime;
@@ -941,12 +942,13 @@ void VulkanRenderer::renderLoop() {
 		this->graphicsQueue.submit(vk::SubmitInfo{ bloomAwaitSemaphores, bloomWaitStageFlags, this->bloomCommandBuffers[frameIndex], this->bloomPassFinishedSemaphores[frameIndex] });
 
 		float avgLogLuminance = *reinterpret_cast<float*>(this->allocator.mapMemory(this->averageLuminanceHostBufferAllocation));
+		avgLogLuminance = std::min(avgLogLuminance, 10.0f); // needed to prevent temporalLuminance from diverging
 		this->allocator.unmapMemory(this->averageLuminanceHostBufferAllocation);
 		
-		this->temporalLuminance = this->temporalLuminance + (std::exp2f(avgLogLuminance) - this->temporalLuminance) * (1 - std::exp(-deltaTime * 1.0f));
+		this->temporalLuminance = this->temporalLuminance + (std::exp2f(avgLogLuminance) - this->temporalLuminance) * (1 - std::exp(-deltaTime));
 
 		float exposure = 1.03f - 2 / (std::log2(this->temporalLuminance + 1.0f) + 2);
-		exposure = 0.18 / exposure + this->_settings.exposureBias;
+		exposure = 0.18f / exposure + this->_settings.exposureBias;
 		
 		cb = this->tonemapCommandBuffers[frameIndex];
 		cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
