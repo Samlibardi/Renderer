@@ -184,6 +184,7 @@ void main()
     }
 
     vec3 color = Lo + emissive;
+    color = min(color, 10.0f);
 	
     if(alphaMode == ALPHA_MODE_MASK)
         outColor = vec4(color, 1.0f);
