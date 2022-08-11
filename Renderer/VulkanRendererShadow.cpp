@@ -294,9 +294,9 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 				cb.pushConstants<glm::mat4x4>(this->shadowMapPipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstants);
 
 				if (mesh->isIndexed)
-					cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndexOffset, 0, 0);
+					cb.drawIndexed(static_cast<uint32_t>(mesh->indices.size()), 1, mesh->firstIndexOffset, 0, 0);
 				else
-					cb.draw(mesh->vertices.size(), 1, mesh->firstVertexOffset, 0);
+					cb.draw(static_cast<uint32_t>(mesh->vertices.size()), 1, mesh->firstVertexOffset, 0);
 			}
 
 			cb.endRenderPass();
@@ -412,9 +412,9 @@ void VulkanRenderer::recordDirectionalShadowMapsCommands(vk::CommandBuffer cb, u
 				cb.pushConstants<glm::mat4x4>(this->shadowMapPipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstants);
 
 				if (mesh->isIndexed)
-					cb.drawIndexed(mesh->indices.size(), 1, mesh->firstIndexOffset, 0, 0);
+					cb.drawIndexed(static_cast<uint32_t>(mesh->indices.size()), 1, mesh->firstIndexOffset, 0, 0);
 				else
-					cb.draw(mesh->vertices.size(), 1, mesh->firstVertexOffset, 0);
+					cb.draw(static_cast<uint32_t>(mesh->vertices.size()), 1, mesh->firstVertexOffset, 0);
 			}
 			cb.endRenderPass();
 		}

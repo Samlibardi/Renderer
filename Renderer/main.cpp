@@ -159,7 +159,7 @@ std::vector<Mesh> makeMesh(tinygltf::Mesh gltfMesh, std::shared_ptr<Node> node, 
 			loadedMesh.materialInfo = PBRInfo{ glm::vec4{bcf[0], bcf[1], bcf[2], bcf[3]}, glm::vec4{ef[0], ef[1], ef[2], 0.0f}, static_cast<float>(material.normalTexture.scale), static_cast<float>(material.pbrMetallicRoughness.metallicFactor), static_cast<float>(material.pbrMetallicRoughness.roughnessFactor), static_cast<float>(material.occlusionTexture.strength) };
 
 			loadedMesh.alphaInfo.alphaMode = material.alphaMode == "MASK" ? AlphaMode::eMask : material.alphaMode == "BLEND" ? AlphaMode::eBlend : AlphaMode::eOpaque;
-			loadedMesh.alphaInfo.alphaCutoff = material.alphaCutoff;
+			loadedMesh.alphaInfo.alphaCutoff = static_cast<float>(material.alphaCutoff);
 		}
 
 		if (!meshHasTangents)
@@ -389,7 +389,7 @@ int main(size_t argc, const char* argv[]) {
 	};
 	
 	window.callbacks()->on_scroll = [](vkfw::Window const&, double, double scrollY) {
-		renderer->camera().dolly(scrollY);
+		renderer->camera().dolly(static_cast<float>(scrollY));
 	};
 
 	while (!window.shouldClose()) {

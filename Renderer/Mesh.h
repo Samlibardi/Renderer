@@ -39,8 +39,8 @@ public:
 	bool isIndexed = true;
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
-	size_t firstVertexOffset;
-	size_t firstIndexOffset;
+	uint32_t firstVertexOffset;
+	uint32_t firstIndexOffset;
 
 	std::pair<glm::vec3, glm::vec3> boundingBox;
 

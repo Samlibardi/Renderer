@@ -22,13 +22,13 @@ typedef unsigned char byte;
 
 const uint32_t FRAMES_IN_FLIGHT = 2;
 
-typedef struct TextureInfo {
+struct TextureInfo {
 	std::vector<byte> data = {0xff, 0xff, 0xff, 0xff};
 	uint32_t width = 1;
 	uint32_t height = 1;
-} TextureInfo;
+};
 
-typedef struct RendererSettings {
+struct RendererSettings {
 	bool hdrEnabled = false;
 
 	bool dynamicShadowsEnabled = true;
@@ -43,24 +43,24 @@ typedef struct RendererSettings {
 
 class VulkanRenderer
 {
-	typedef struct CameraShaderData {
+	struct CameraShaderData {
 		glm::vec4 position;
 		glm::mat4 viewProjectionMatrix;
 		glm::mat4 invViewProjectionMatrix;
-	} CameraData;
+	};
 
-	typedef struct PointLightShaderData {
+	struct PointLightShaderData {
 		alignas(16) glm::vec3 position;
 		alignas(16) glm::vec3 intensity;
 	};
 
-	typedef struct DirectionalLightShaderData {
+	struct DirectionalLightShaderData {
 		alignas(16) glm::vec3 position;
 		alignas(16) glm::vec3 direction;
 		alignas(16) glm::vec3 intensity;
 	};
 
-	typedef struct CSMSplitShaderData {
+	struct CSMSplitShaderData {
 		glm::mat4 viewproj;
 		alignas(16) float depth;
 	};
@@ -83,7 +83,7 @@ public:
 
 	Camera& camera() { return this->_camera; };
 
-	RendererSettings& const settings() { return this->_settings; }
+	RendererSettings& settings() { return this->_settings; }
 
 private:
 	bool running = false;
