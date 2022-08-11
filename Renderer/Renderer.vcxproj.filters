@@ -103,50 +103,50 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shaders\averageLuminance.comp">
+    <CustomBuild Include="shaders\averageLuminance.comp">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\basic.frag">
+    </CustomBuild>
+    <CustomBuild Include="shaders\basic.frag">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\basic.vert">
+    </CustomBuild>
+    <CustomBuild Include="shaders\basic.vert">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\env.frag">
+    </CustomBuild>
+    <CustomBuild Include="shaders\bloomDownsample.comp">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\env.vert">
+    </CustomBuild>
+    <CustomBuild Include="shaders\bloomUpsample.comp">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\envbake.vert">
+    </CustomBuild>
+    <CustomBuild Include="shaders\env.frag">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\envbakediffuse.frag">
+    </CustomBuild>
+    <CustomBuild Include="shaders\env.vert">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\envbakespecular.frag">
+    </CustomBuild>
+    <CustomBuild Include="shaders\envbake.vert">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\pbr.frag">
+    </CustomBuild>
+    <CustomBuild Include="shaders\envbakediffuse.frag">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\postfx.vert">
+    </CustomBuild>
+    <CustomBuild Include="shaders\envbakespecular.frag">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\shadowmap.vert">
+    </CustomBuild>
+    <CustomBuild Include="shaders\pbr.frag">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\solid.frag">
+    </CustomBuild>
+    <CustomBuild Include="shaders\postfx.vert">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\bloomDownsample.comp">
+    </CustomBuild>
+    <CustomBuild Include="shaders\shadowmap.vert">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\bloomUpsample.comp">
+    </CustomBuild>
+    <CustomBuild Include="shaders\solid.frag">
       <Filter>Source Files\GLSL</Filter>
-    </None>
-    <None Include="shaders\tonemap.comp">
+    </CustomBuild>
+    <CustomBuild Include="shaders\tonemap.comp">
       <Filter>Source Files\GLSL</Filter>
-    </None>
+    </CustomBuild>
   </ItemGroup>
 </Project>
