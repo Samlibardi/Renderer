@@ -122,8 +122,8 @@
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>
-      </Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
+xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
@@ -151,8 +151,8 @@
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>
-      </Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
+xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
@@ -177,8 +177,8 @@
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>
-      </Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
+xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
@@ -206,8 +206,8 @@
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>
-      </Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
+xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
