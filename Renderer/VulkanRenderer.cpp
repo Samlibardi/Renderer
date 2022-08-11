@@ -183,7 +183,7 @@ VulkanRenderer::~VulkanRenderer() {
 	this->vulkanInstance.destroy();
 }
 
-std::tuple<vk::Image, vk::ImageView, vma::Allocation> VulkanRenderer::createImageFromTextureInfo(TextureInfo& textureInfo) {
+std::tuple<vk::Image, vk::ImageView, vma::Allocation> VulkanRenderer::createImageFromTextureInfo(struct TextureInfo& textureInfo) {
 	uint32_t mipLevels = 1;
 	//if (textureInfo.width > 512 && textureInfo.height > 512) mipLevels = 4;
 
