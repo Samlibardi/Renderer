@@ -6,6 +6,7 @@
 #include <array>
 
 #include <vulkan/vulkan.hpp>
+#include <vkfw/vkfw.hpp>
 
 #include <glm/gtx/transform.hpp>
 
@@ -71,7 +72,7 @@ class VulkanRenderer
 	};
 
 public:
-	VulkanRenderer(const vk::Instance vulkanInstance, const vk::SurfaceKHR surface, const RendererSettings& rendererSettings);
+	VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings);
 	~VulkanRenderer();
 	void start();
 

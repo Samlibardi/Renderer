@@ -14,9 +14,24 @@
 #include "Mesh.h"
 #include "PointLight.h"
 
-#include <iostream>
 
-VulkanRenderer::VulkanRenderer(const vk::Instance vulkanInstance, const vk::SurfaceKHR surface, const RendererSettings& rendererSettings) : vulkanInstance(vulkanInstance), surface(surface), _settings(rendererSettings) {
+VulkanRenderer::VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings) : _settings(rendererSettings) {
+	vk::ApplicationInfo appInfo{ "Sam's Vulkan Renderer", 1, "Custom Engine", 1, VK_API_VERSION_1_1 };
+#ifdef _DEBUG
+	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
+#else 
+	const std::vector<const char*> validationLayers = { };
+#endif
+	std::vector<const char*> vulkanExtensions;
+	{
+		uint32_t c;
+		const char** v = vkfw::getRequiredInstanceExtensions(&c);
+		vulkanExtensions.resize(c);
+		memcpy(vulkanExtensions.data(), v, sizeof(char**) * c);
+	}
+
+	this->vulkanInstance = vk::createInstance(vk::InstanceCreateInfo{ {}, &appInfo, validationLayers, vulkanExtensions });
+	this->surface = vkfw::createWindowSurface(vulkanInstance, window);
 
 	std::vector<vk::PhysicalDevice> availableDevices = this->vulkanInstance.enumeratePhysicalDevices();
 	if (availableDevices.empty()) throw std::runtime_error("No devices with Vulkan support are available");

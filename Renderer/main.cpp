@@ -310,24 +310,7 @@ int main(size_t argc, const char* argv[]) {
 	vkfw::Window window = vkfw::createWindow(1280, 720, "Hello Vulkan", {}, {});
 	window.set<vkfw::Attribute::eResizable>(false);
 
-	vk::ApplicationInfo appInfo{ "Sam's Vulkan Renderer", 1, "Custom Engine", 1, VK_API_VERSION_1_1 };
-#ifdef _DEBUG
-	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-#else 
-	const std::vector<const char*> validationLayers = { };
-#endif
-	std::vector<const char*> vulkanExtensions;
-	{
-		uint32_t c;
-		const char** v = vkfw::getRequiredInstanceExtensions(&c);
-		vulkanExtensions.resize(c);
-		memcpy(vulkanExtensions.data(), v, sizeof(char**) * c);
-	}
-
-	vk::Instance vulkanInstance = vk::createInstance(vk::InstanceCreateInfo{ {}, &appInfo, validationLayers, vulkanExtensions });
-	vk::SurfaceKHR surface = vkfw::createWindowSurface(vulkanInstance, window);
-
-	renderer = std::make_unique<VulkanRenderer>(vulkanInstance, surface, RendererSettings{});
+	renderer = std::make_unique<VulkanRenderer>(window, RendererSettings{});
 
 	std::array<TextureInfo, 6> cubeFaces = {
 		loadTexture("./environment/px.png"),
