@@ -122,8 +122,8 @@
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
-xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /r /k /v /y
+xcopy "$(ProjectDir)environment" "$(OutDir)environment"  /i /c /e /r /k /v /y</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
@@ -151,8 +151,8 @@ xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
-xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /r /k /v /y
+xcopy "$(ProjectDir)environment" "$(OutDir)environment"  /i /c /e /r /k /v /y</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
@@ -177,8 +177,8 @@ xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
-xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /r /k /v /y
+xcopy "$(ProjectDir)environment" "$(OutDir)environment"  /i /c /e /r /k /v /y</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
@@ -206,8 +206,8 @@ xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
       <AdditionalDependencies>"vulkan-1.lib";"glfw3.lib";%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /k
-xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
+      <Command>xcopy "$(ProjectDir)textures" "$(OutDir)textures" /i /c /e /r /k /v /y
+xcopy "$(ProjectDir)environment" "$(OutDir)environment"  /i /c /e /r /k /v /y</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>
@@ -235,6 +235,7 @@ xcopy "$(ProjectDir)environment" "$(OutDir)environment" /i /c /e /k</Command>
     <ClInclude Include="Animation.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="DirectionalLight.h" />
+    <ClInclude Include="Flags.h" />
     <ClInclude Include="InterpolationTree.h" />
     <ClInclude Include="Mesh.h" />
     <ClInclude Include="Node.h" />

@@ -29,6 +29,7 @@ layout(set=1, binding=1) uniform sampler2D albedoSampler;
 struct PointLight {
   vec3 position;
   vec3 intensity;
+  int packedShadowMapData;
 };
 
 layout(binding=1) readonly buffer lightsBuffer {

@@ -155,6 +155,9 @@ VulkanRenderer::~VulkanRenderer() {
 	this->allocator.destroyImage(this->colorImage, this->colorImageAllocation);
 	this->allocator.destroyImage(this->depthImage, this->depthImageAllocation);
 
+	this->allocator.destroyBuffer(this->lightsBuffer, this->lightsBufferAllocation);
+	this->allocator.destroyBuffer(this->lightsStagingBuffer, this->lightsStagingBufferAllocation);
+
 	this->meshes = {};
 	this->opaqueMeshes = {};
 	this->nonOpaqueMeshes = {};
@@ -200,7 +203,7 @@ std::tuple<vk::Image, vk::ImageView, vma::Allocation> VulkanRenderer::createImag
 void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const DirectionalLight& directionalLight) {
 	for (auto& light : pointLights) {
 		auto p = std::make_shared<PointLight>(light);
-		if (light.castShadows)
+		if (light.flags & PointLightFlagBits::eCastShadows)
 			this->shadowCastingPointLights.push_back(p);
 		this->pointLights.push_back(p);
 	}
@@ -215,33 +218,22 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const
 	vk::DeviceSize directionalBufferAlignedSize = (directionalBufferSize / minBufferAlignment + (directionalBufferSize % minBufferAlignment ? 1 : 0)) * minBufferAlignment;
 
 	size_t bufferSize = pointBufferAlignedSize + directionalBufferAlignedSize;
+
 	std::tie(this->lightsBuffer, this->lightsBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
-
-	auto [lightsStagingBuffer, lightsStagingBufferAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
-
-	PointLightShaderData* pointData = reinterpret_cast<PointLightShaderData*>(this->allocator.mapMemory(lightsStagingBufferAllocation));
-	for (auto&& [i, light] : iter::enumerate(pointLights)) {
-		pointData[i] = PointLightShaderData{ light.point, light.intensity };
-	}
-	DirectionalLightShaderData* directionalData = reinterpret_cast<DirectionalLightShaderData*>(pointData + pointLights.size());
-	*directionalData = DirectionalLightShaderData{ directionalLight.position, directionalLight.orientation * glm::vec3{ 0.0f, 0.0f, 1.0f}, directionalLight.intensity };
-	this->allocator.unmapMemory(lightsStagingBufferAllocation);
+	std::tie(this->lightsStagingBuffer, this->lightsStagingBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
 
 	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
-
 	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
-	cb.copyBuffer(lightsStagingBuffer, this->lightsBuffer, vk::BufferCopy{0, 0, bufferSize});
+	this->recordUpdateLightsBufferCommands(cb);
 	cb.end();
-
 	vk::Fence fence = this->device.createFence(vk::FenceCreateInfo{});
 	this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, {} }, fence);
 	this->device.waitForFences(fence, true, UINT64_MAX);
-	this->allocator.destroyBuffer(lightsStagingBuffer, lightsStagingBufferAllocation);
-	this->device.freeCommandBuffers(commandPool, cb);
 	this->device.destroyFence(fence);
+	this->device.freeCommandBuffers(commandPool, cb);
 
-	std::vector<vk::DescriptorBufferInfo> pointBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, 0, pointBufferAlignedSize } };
-	std::vector<vk::DescriptorBufferInfo> directionalBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, pointBufferAlignedSize, directionalBufferAlignedSize } };
+	std::vector<vk::DescriptorBufferInfo> pointBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, 0, pointBufferSize } };
+	std::vector<vk::DescriptorBufferInfo> directionalBufferInfos = { vk::DescriptorBufferInfo{this->lightsBuffer, pointBufferAlignedSize, directionalBufferSize } };
 	std::vector<vk::WriteDescriptorSet> writeDescriptorSets = { 
 		vk::WriteDescriptorSet{ this->globalDescriptorSet, 0, 0, vk::DescriptorType::eStorageBuffer, {}, pointBufferInfos },
 		vk::WriteDescriptorSet{ this->globalDescriptorSet, 1, 0, vk::DescriptorType::eUniformBuffer, {}, directionalBufferInfos }
@@ -250,6 +242,27 @@ void VulkanRenderer::setLights(const std::vector<PointLight>& pointLights, const
 
 	this->createShadowMapImage();
 	this->createStaticShadowMapImage();
+}
+
+void VulkanRenderer::recordUpdateLightsBufferCommands(const vk::CommandBuffer& cb) {
+	size_t pointBufferSize = pointLights.size() * sizeof(PointLightShaderData);
+	size_t directionalBufferSize = sizeof(DirectionalLightShaderData);
+
+	vk::DeviceSize minBufferAlignment = this->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
+	vk::DeviceSize pointBufferAlignedSize = (pointBufferSize / minBufferAlignment + (pointBufferSize % minBufferAlignment ? 1 : 0)) * minBufferAlignment;
+	vk::DeviceSize directionalBufferAlignedSize = (directionalBufferSize / minBufferAlignment + (directionalBufferSize % minBufferAlignment ? 1 : 0)) * minBufferAlignment;
+
+	size_t bufferSize = pointBufferAlignedSize + directionalBufferAlignedSize;
+
+	PointLightShaderData* pointData = reinterpret_cast<PointLightShaderData*>(this->allocator.mapMemory(lightsStagingBufferAllocation));
+	for (auto&& [i, light] : iter::enumerate(this->pointLights)) {
+		pointData[i] = PointLightShaderData{ light->point, light->intensity, light->flags, light->shadowMapIndex };
+	}
+	DirectionalLightShaderData* directionalData = reinterpret_cast<DirectionalLightShaderData*>(pointData + pointLights.size());
+	*directionalData = DirectionalLightShaderData{ directionalLight.position, directionalLight.orientation * glm::vec3{ 0.0f, 0.0f, 1.0f}, directionalLight.intensity };
+	this->allocator.unmapMemory(lightsStagingBufferAllocation);
+
+	cb.copyBuffer(lightsStagingBuffer, this->lightsBuffer, vk::BufferCopy{0, 0, bufferSize});
 }
 
 void VulkanRenderer::setRootNodes(std::vector<std::shared_ptr<Node>> nodes) {
@@ -390,12 +403,25 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 
 	std::vector<float> queuePriorities = { 1.0f };
 	vk::DeviceQueueCreateInfo queueCreateInfo = vk::DeviceQueueCreateInfo{{}, this->graphicsQueueFamilyIndex, queuePriorities};
-	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-	vk::PhysicalDeviceFeatures deviceFeatures{};
-	deviceFeatures.fillModeNonSolid = true;
-	deviceFeatures.samplerAnisotropy = true;
-	deviceFeatures.imageCubeArray = true;
-	this->device = this->physicalDevice.createDevice(vk::DeviceCreateInfo{ {}, queueCreateInfo, {}, deviceExtensions, &deviceFeatures });
+	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_16BIT_STORAGE_EXTENSION_NAME, VK_KHR_8BIT_STORAGE_EXTENSION_NAME };
+
+	vk::PhysicalDevice16BitStorageFeaturesKHR device16BitStorageFeatures{};
+	device16BitStorageFeatures.uniformAndStorageBuffer16BitAccess = true;
+	device16BitStorageFeatures.storageBuffer16BitAccess = true;
+	vk::PhysicalDevice8BitStorageFeaturesKHR device8BitStorageFeatures{};
+	device8BitStorageFeatures.pNext = &device16BitStorageFeatures;
+	device8BitStorageFeatures.uniformAndStorageBuffer8BitAccess = true;
+	device8BitStorageFeatures.storageBuffer8BitAccess = true;
+	vk::PhysicalDeviceFeatures2 deviceFeatures2{};
+	deviceFeatures2.pNext = &device8BitStorageFeatures;
+	deviceFeatures2.features.fillModeNonSolid = true;
+	deviceFeatures2.features.samplerAnisotropy = true;
+	deviceFeatures2.features.imageCubeArray = true;
+
+	vk::DeviceCreateInfo deviceCreateInfo{ {}, queueCreateInfo, {}, deviceExtensions, nullptr };
+	deviceCreateInfo.pNext = &deviceFeatures2;
+
+	this->device = this->physicalDevice.createDevice(deviceCreateInfo);
 	this->graphicsQueue = this->device.getQueue(this->graphicsQueueFamilyIndex, 0);
 
 	this->commandPool = this->device.createCommandPool(vk::CommandPoolCreateInfo{{vk::CommandPoolCreateFlagBits::eResetCommandBuffer}, this->graphicsQueueFamilyIndex});
@@ -516,7 +542,7 @@ void VulkanRenderer::createSwapchainAndAttachmentImages() {
 		}
 	}
 	
-	bool useHdr = this->_settings.hdrEnabled && hdrCapable;
+	bool useHdr = this->_settings.hdrOutputEnabled && hdrCapable;
 	auto swapchainFormatPriorities = useHdr ? std::map<vk::Format, uint8_t>{
 		std::pair{ vk::Format::eB10G11R11UfloatPack32, 3 },
 		std::pair{ vk::Format::eR16G16B16Sfloat, 2 },
@@ -893,11 +919,11 @@ void VulkanRenderer::renderLoop() {
 			n->recalculateModel(glm::mat4{ 1.0f });
 		}
 
-		this->renderShadowMaps(frameIndex);
-
 		glm::vec3 cameraPos;
 		glm::mat4 viewproj;
 		std::tie(cameraPos, viewproj) = this->_camera.positionAndMatrix();
+
+		this->renderShadowMaps(frameIndex, cameraPos);
 
 		glm::mat4 invviewproj = glm::inverse(viewproj);
 

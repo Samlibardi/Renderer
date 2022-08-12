@@ -29,11 +29,13 @@ struct TextureInfo {
 };
 
 struct RendererSettings {
-	bool hdrEnabled = false;
+	bool hdrOutputEnabled = false;
 
 	bool dynamicShadowsEnabled = true;
 	uint32_t pointShadowMapResolution = 1024u;
+	uint16_t pointShadowMapCount = 16u;
 	uint32_t directionalShadowMapResolution = 4096u;
+	uint8_t directionalShadowCascadeLevels = 5u;
 
 	bool vsync = false;
 
@@ -52,6 +54,8 @@ class VulkanRenderer
 	struct PointLightShaderData {
 		alignas(16) glm::vec3 position;
 		alignas(16) glm::vec3 intensity;
+		PointLightFlags flags;
+		uint16_t shadowMapIndex;
 	};
 
 	struct DirectionalLightShaderData {
@@ -166,6 +170,8 @@ private:
 	DirectionalLight directionalLight;
 	vk::Buffer lightsBuffer;
 	vma::Allocation lightsBufferAllocation;
+	vk::Buffer lightsStagingBuffer;
+	vma::Allocation lightsStagingBufferAllocation;
 
 	vk::Buffer pbrBuffer;
 	vma::Allocation pbrBufferAllocation;
@@ -238,7 +244,6 @@ private:
 	std::vector<vk::Framebuffer> staticPointShadowMapFramebuffers;
 
 	vk::RenderPass directionalShadowMapRenderPass;
-	uint8_t directionalShadowCascadeLevels = 5;
 	std::vector<float> directionalShadowCascadeDepths;
 	std::vector<float> directionalShadowCascadeCameraSpaceDepths;
 	std::array<vk::Buffer, FRAMES_IN_FLIGHT> directionalShadowCascadeSplitDataBuffers;
@@ -316,8 +321,8 @@ private:
 	void createDirectionalShadowMapRenderPass();
 	void createStaticShadowMapRenderPass();
 	void createShadowMapPipeline();
-	void renderShadowMaps(uint32_t frameIndex);
-	void recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_t frameIndex); 
+	void renderShadowMaps(uint32_t frameIndex, const glm::vec3& cameraPos);
+	void recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_t frameIndex, const glm::vec3& cameraPos);
 	void recordDirectionalShadowMapsCommands(vk::CommandBuffer cb, uint32_t frameIndex);
 
 	void makeDiffuseEnvMap();
@@ -326,6 +331,8 @@ private:
 	void makeSpecularEnvMap();
 	std::tuple<vk::Pipeline, vk::PipelineLayout> createEnvMapSpecularBakePipeline(vk::RenderPass renderPass);
 	std::tuple<vk::RenderPass, std::array<std::array<vk::ImageView, 10>, 6>, std::array<std::array<vk::Framebuffer, 10>, 6>> createEnvMapSpecularBakeRenderPass();
+
+	void recordUpdateLightsBufferCommands(const vk::CommandBuffer& cb);
 
 	void renderLoop();
 	void drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);

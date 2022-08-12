@@ -1,5 +1,7 @@
 #version 450
-#extension GL_KHR_vulkan_glsl: enable
+#extension GL_KHR_vulkan_glsl                   : enable
+#extension GL_EXT_shader_16bit_storage          : enable
+#extension GL_EXT_shader_8bit_storage           : enable
 
 #define PI radians(180)
 
@@ -34,9 +36,15 @@ layout(set=1, binding=6) uniform alphaInfo {
     float alphaCutoff;
 };
 
+#define PointLightFlagCastShadows               0x01u
+#define PointLightFlagHasShadowMap              0x02u
+#define PointLightFlagStaticShadowMapRendered   0x04u
+
 struct PointLight {
   vec3 position;
   vec3 intensity;
+  uint8_t flags;
+  uint16_t shadowMapIndex;
 };
 
 struct DirectionalLight {
@@ -133,14 +141,22 @@ void main()
         float lightDepth = max(absL.x, max(absL.y, absL.z)) - 0.05;
 
         lightDepth = (far - far * near / lightDepth )/(far - near);
+        
+        bool castShadow = bool(uint(pointLights[i].flags) & PointLightFlagCastShadows);
+        bool hasShadowMap = bool(uint(pointLights[i].flags) & PointLightFlagHasShadowMap);
 
-        float shadowTest = texture(pointShadowMapsSampler, vec4(-L, i), lightDepth);
+        if(castShadow && hasShadowMap) {
+            float shadowTest = texture(pointShadowMapsSampler, vec4(-L, uint(pointLights[i].shadowMapIndex)), lightDepth);
 
-        if(shadowTest < 1e-3)
-            continue;
+            if(shadowTest < 1e-3)
+                continue;
 
-        L = normalize(L);
-        Lo += shadowTest * BRDF(radiance, L, N, V, albedo.rgb, roughness, metallic, F0);
+            L = normalize(L);
+            Lo += shadowTest * BRDF(radiance, L, N, V, albedo.rgb, roughness, metallic, F0);
+        }
+        else {
+            Lo += BRDF(radiance, L, N, V, albedo.rgb, roughness, metallic, F0);
+        }
     }
 
     //directional light

@@ -118,16 +118,16 @@ void VulkanRenderer::createShadowMapPipeline() {
 }
 
 void VulkanRenderer::createShadowMapImage() {
-	if (!this->shadowCastingPointLights.empty()) {
+	if (this->_settings.pointShadowMapCount > 0) {
 		std::tie(this->pointShadowMapsImage, this->pointShadowMapsImageAllocation) = this->allocator.createImage(
-			vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution, 1}, 1, static_cast<uint32_t>(this->pointLights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive },
+			vk::ImageCreateInfo{ {vk::ImageCreateFlagBits::eCubeCompatible}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution, 1}, 1, static_cast<uint32_t>(this->_settings.pointShadowMapCount * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive },
 			vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 		);
 
-		this->pointShadowMapFaceImageViews.reserve(this->shadowCastingPointLights.size() * 6);
-		this->pointShadowMapFramebuffers.reserve(this->shadowCastingPointLights.size() * 6);
-		for (const auto& [i, light] : iter::enumerate(this->shadowCastingPointLights)) {
-			for (unsigned short j = 0; j < 6; j++) {
+		this->pointShadowMapFaceImageViews.reserve(this->_settings.pointShadowMapCount * 6);
+		this->pointShadowMapFramebuffers.reserve(this->_settings.pointShadowMapCount * 6);
+		for (uint16_t i = 0; i < this->_settings.pointShadowMapCount; i++) {
+			for (uint8_t j = 0; j < 6; j++) {
 				vk::ImageView faceView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->pointShadowMapsImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, static_cast<uint32_t>(i * 6 + j), 1 } });
 				this->pointShadowMapFaceImageViews.push_back(faceView);
 				std::vector<vk::ImageView> attachments = { faceView };
@@ -136,7 +136,17 @@ void VulkanRenderer::createShadowMapImage() {
 			}
 		}
 
-		this->pointShadowMapCubeArrayImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->pointShadowMapsImage, vk::ImageViewType::eCubeArray, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, 0, static_cast<uint32_t>(this->shadowCastingPointLights.size() * 6)} });
+		this->pointShadowMapCubeArrayImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->pointShadowMapsImage, vk::ImageViewType::eCubeArray, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, 0, static_cast<uint32_t>(this->_settings.pointShadowMapCount * 6)} });
+	
+		vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
+		cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eFragmentShader, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, 1, 0, static_cast<uint32_t>(this->_settings.pointShadowMapCount * 6)} });
+		cb.end();
+		vk::Fence fence = this->device.createFence(vk::FenceCreateInfo{});
+		this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, {} }, fence);
+		this->device.waitForFences(fence, true, UINT64_MAX);
+		this->device.destroyFence(fence);
+		this->device.freeCommandBuffers(commandPool, cb);
 	}
 
 	// parallel cascade split: https://developer.nvidia.com/gpugems/gpugems3/part-ii-light-and-shadows/chapter-10-parallel-split-shadow-maps-programmable-gpus
@@ -147,10 +157,10 @@ void VulkanRenderer::createShadowMapImage() {
 		const float f = this->_camera.far();
 		const float n = this->_camera.near();
 
-		for (int i = 1; i < this->directionalShadowCascadeLevels; i++) {
+		for (int i = 1; i < this->_settings.directionalShadowCascadeLevels; i++) {
 			const float& n = this->_camera.near();
 			const float& f = this->_camera.far();
-			const float N = static_cast<float>(this->directionalShadowCascadeLevels);
+			const float N = static_cast<float>(this->_settings.directionalShadowCascadeLevels);
 
 			const float Cuni = n + (f - n) * i / N;
 			const float Clog = n * std::pow(f / n, i / N);
@@ -165,11 +175,11 @@ void VulkanRenderer::createShadowMapImage() {
 	}
 
 	std::tie(this->directionalCascadedShadowMapsImage, this->directionalCascadedShadowMapsImageAllocation) = this->allocator.createImage(
-		vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.directionalShadowMapResolution, this->_settings.directionalShadowMapResolution, 1}, 1, directionalShadowCascadeLevels, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive },
+		vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.directionalShadowMapResolution, this->_settings.directionalShadowMapResolution, 1}, 1, this->_settings.directionalShadowCascadeLevels, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive },
 		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 	);
 
-	for (uint32_t i = 0; i < this->directionalShadowCascadeLevels; i++) {
+	for (uint32_t i = 0; i < this->_settings.directionalShadowCascadeLevels; i++) {
 		vk::ImageView iv = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->directionalCascadedShadowMapsImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, i, 1 } });
 		this->directionalShadowMapImageViews.push_back(iv);
 		std::vector<vk::ImageView> attachments = { iv };
@@ -179,7 +189,7 @@ void VulkanRenderer::createShadowMapImage() {
 
 	this->directionalShadowMapArrayImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->directionalCascadedShadowMapsImage, vk::ImageViewType::e2DArray, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, 0, VK_REMAINING_ARRAY_LAYERS} });
 
-	size_t csmBufferSize = this->directionalShadowCascadeLevels * sizeof(CSMSplitShaderData);
+	size_t csmBufferSize = this->_settings.directionalShadowCascadeLevels * sizeof(CSMSplitShaderData);
 	for (uint8_t i = 0; i < FRAMES_IN_FLIGHT; i++) {
 		std::tie(this->directionalShadowCascadeSplitDataBuffers[i], this->directionalShadowCascadeSplitDataBufferAllocations[i]) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, csmBufferSize, vk::BufferUsageFlagBits::eStorageBuffer, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuToGpu });
 	}
@@ -203,16 +213,16 @@ void VulkanRenderer::createShadowMapImage() {
 }
 
 void VulkanRenderer::createStaticShadowMapImage() {
-	if (!this->shadowCastingPointLights.empty()) {
+	if (this->_settings.pointShadowMapCount > 0) {
 		std::tie(this->staticPointShadowMapsImage, this->pointStaticShadowMapsImageAllocation) = this->allocator.createImage(
-			vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution, 1}, 1, static_cast<uint32_t>(this->pointLights.size() * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive },
+			vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution, 1}, 1, static_cast<uint32_t>(this->_settings.pointShadowMapCount * 6), vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive },
 			vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
 		);
 
-		this->pointShadowMapFaceImageViews.reserve(this->pointLights.size() * 6);
-		this->pointShadowMapFramebuffers.reserve(this->pointLights.size() * 6);
-		for (const auto& [i, light] : iter::enumerate(this->pointLights)) {
-			for (unsigned short j = 0; j < 6; j++) {
+		this->pointShadowMapFaceImageViews.reserve(this->_settings.pointShadowMapCount * 6);
+		this->pointShadowMapFramebuffers.reserve(this->_settings.pointShadowMapCount * 6);
+		for (uint16_t i = 0; i < this->_settings.pointShadowMapCount; i++) {
+			for (uint8_t j = 0; j < 6; j++) {
 				vk::ImageView faceView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->staticPointShadowMapsImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eDepth, 0, 1, static_cast<uint32_t>(i * 6 + j), 1 } });
 				this->staticPointShadowMapFaceImageViews.push_back(faceView);
 				std::vector<vk::ImageView> attachments = { faceView };
@@ -223,7 +233,7 @@ void VulkanRenderer::createStaticShadowMapImage() {
 	}
 }
 
-void VulkanRenderer::renderShadowMaps(uint32_t frameIndex) {
+void VulkanRenderer::renderShadowMaps(uint32_t frameIndex, const glm::vec3& cameraPos) {
 	vk::CommandBuffer& cb = this->shadowPassCommandBuffers[frameIndex];
 	cb.reset();
 	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
@@ -233,15 +243,17 @@ void VulkanRenderer::renderShadowMaps(uint32_t frameIndex) {
 
 	cb.bindPipeline(vk::PipelineBindPoint::eGraphics, this->shadowMapPipeline);
 
-	this->recordPointShadowMapsCommands(cb, frameIndex);
+	this->recordPointShadowMapsCommands(cb, frameIndex, cameraPos);
 	this->recordDirectionalShadowMapsCommands(cb, frameIndex);
+
+	this->recordUpdateLightsBufferCommands(cb);
 
 	cb.end();
 	this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, this->shadowPassFinishedSemaphores[frameIndex] });
 }
 
-void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_t frameIndex) {
-	if (this->shadowCastingPointLights.empty())
+void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_t frameIndex, const glm::vec3& cameraPos) {
+	if (this->shadowCastingPointLights.empty() || this->_settings.pointShadowMapCount == 0)
 		return;
 
 	static const std::vector<vk::ClearValue> clearValues = { vk::ClearDepthStencilValue{1.0f} };
@@ -263,8 +275,28 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 	cb.setViewport(0, vk::Viewport{ 0.0f, 0.0f, static_cast<float>(this->_settings.pointShadowMapResolution), static_cast<float>(this->_settings.pointShadowMapResolution), 0.0f, 1.0f });
 	cb.setScissor(0, vk::Rect2D({ 0, 0 }, vk::Extent2D{ this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution }));
 
-	for (auto&& [i, light] : iter::enumerate(this->shadowCastingPointLights)) {
-		if (light->staticShadowMapRendered)
+	std::vector<std::shared_ptr<PointLight>> sortedPointLights;
+	sortedPointLights.reserve(std::min<uint16_t>(this->_settings.pointShadowMapCount, this->shadowCastingPointLights.size()));
+
+	uint16_t shadowMapIndex = 0;
+	for (const auto& light : iter::sorted(this->shadowCastingPointLights, [&cameraPos](const std::shared_ptr<PointLight>& a, const std::shared_ptr<PointLight>& b) { return glm::distance(a->point, cameraPos) < glm::distance(b->point, cameraPos); })) {
+		if (shadowMapIndex < this->_settings.pointShadowMapCount) {
+			sortedPointLights.push_back(light);
+			if (light->shadowMapIndex != shadowMapIndex)
+				light->flags &= ~PointLightFlagBits::eStaticShadowMapRendered;
+			light->shadowMapIndex = shadowMapIndex;
+			light->flags |= PointLightFlagBits::eHasShadowMap;
+			shadowMapIndex++;
+		}
+		else {
+			light->shadowMapIndex = ~0U;
+			light->flags &= ~PointLightFlagBits::eStaticShadowMapRendered;
+			light->flags &= ~PointLightFlagBits::eHasShadowMap;
+		}
+	}
+
+	for (const auto& light : sortedPointLights) {
+		if (light->flags & PointLightFlagBits::eStaticShadowMapRendered)
 			continue;
 
 		const glm::vec3& cameraPos = light->point;
@@ -274,7 +306,7 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 			sortedMeshes.push_back(el);
 
 		for (unsigned short j = 0; j < 6; j++) {
-			cb.beginRenderPass(vk::RenderPassBeginInfo{ this->staticShadowMapRenderPass, this->staticPointShadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+			cb.beginRenderPass(vk::RenderPassBeginInfo{ this->staticShadowMapRenderPass, this->staticPointShadowMapFramebuffers[light->shadowMapIndex * 6 + j], vk::Rect2D{{0, 0}, {this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
 
 			auto& pov = facePovs[j];
 			pov.setPosition(cameraPos);
@@ -302,14 +334,14 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 			cb.endRenderPass();
 		}
 
-		light->staticShadowMapRendered = true;
+		light->flags |= PointLightFlagBits::eStaticShadowMapRendered;
 
-		cb.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eShaderRead, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(i) * 6, 6 } });
-		cb.blitImage(this->staticPointShadowMapsImage, vk::ImageLayout::eTransferSrcOptimal, this->pointShadowMapsImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(i) * 6, 6 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(i) * 6, 6 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }}, vk::Filter::eNearest);
-		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(i) * 6, 6 } });
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eShaderRead, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(light->shadowMapIndex * 6), 6 }});
+		cb.blitImage(this->staticPointShadowMapsImage, vk::ImageLayout::eTransferSrcOptimal, this->pointShadowMapsImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(light->shadowMapIndex * 6), 6 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(light->shadowMapIndex * 6), 6 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }}, vk::Filter::eNearest);
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(light->shadowMapIndex * 6), 6 } });
 	}
 
-	for (const auto& [i, light] : iter::enumerate(this->shadowCastingPointLights)) {
+	for (const auto& light : sortedPointLights) {
 		const glm::vec3 cameraPos = light->point;
 
 		std::vector<std::shared_ptr<Mesh>> sortedMeshes;
@@ -331,11 +363,11 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 				nonCulledMeshes++;
 
 			if (this->_settings.dynamicShadowsEnabled && nonCulledMeshes > 0) {
-				cb.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eShaderRead, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(i) * 6 + j, 1 } });
-				cb.blitImage(this->staticPointShadowMapsImage, vk::ImageLayout::eTransferSrcOptimal, this->pointShadowMapsImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(i) * 6 + j, 1 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(i) * 6 + j, 1 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }}, vk::Filter::eNearest);
-				cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eEarlyFragmentTests, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eDepthStencilAttachmentOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(i) * 6 + j, 1 } });
+				cb.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eShaderRead, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(light->shadowMapIndex * 6 + j), 1 } });
+				cb.blitImage(this->staticPointShadowMapsImage, vk::ImageLayout::eTransferSrcOptimal, this->pointShadowMapsImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(light->shadowMapIndex * 6 + j), 1 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }, vk::ImageSubresourceLayers{ vk::ImageAspectFlagBits::eDepth, 0, static_cast<uint32_t>(light->shadowMapIndex * 6 + j), 1 }, std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(this->_settings.pointShadowMapResolution), static_cast<int32_t>(this->_settings.pointShadowMapResolution), 1 } }}, vk::Filter::eNearest);
+				cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eEarlyFragmentTests, vk::DependencyFlagBits::eByRegion, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eDepthStencilAttachmentOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, this->pointShadowMapsImage, vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eDepth, 0, VK_REMAINING_MIP_LEVELS, static_cast<uint32_t>(light->shadowMapIndex * 6 + j), 1 } });
 
-				cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->pointShadowMapFramebuffers[i * 6 + j], vk::Rect2D{{0, 0}, {this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
+				cb.beginRenderPass(vk::RenderPassBeginInfo{ this->shadowMapRenderPass, this->pointShadowMapFramebuffers[light->shadowMapIndex * 6 + j], vk::Rect2D{{0, 0}, {this->_settings.pointShadowMapResolution, this->_settings.pointShadowMapResolution}}, clearValues }, vk::SubpassContents::eInline);
 				for (auto& mesh : culledMeshes) {
 					const glm::mat4 model = mesh->node->modelMatrix();
 					const glm::mat4 modelviewproj = viewproj * model;
@@ -368,10 +400,10 @@ void VulkanRenderer::recordDirectionalShadowMapsCommands(vk::CommandBuffer cb, u
 
 	CSMSplitShaderData* csmSplitsData = reinterpret_cast<CSMSplitShaderData*>(this->allocator.mapMemory(this->directionalShadowCascadeSplitDataBufferAllocations[frameIndex]));
 
-	for (size_t i = 0; i < this->directionalShadowCascadeLevels; i++) {
+	for (size_t i = 0; i < this->_settings.directionalShadowCascadeLevels; i++) {
 		Camera viewSplit = this->_camera;
 		viewSplit.setNear(this->directionalShadowCascadeDepths[i]);
-		if(i < this->directionalShadowCascadeLevels - 1)
+		if(i < this->_settings.directionalShadowCascadeLevels - 1)
 			viewSplit.setFar(this->directionalShadowCascadeDepths[i+1]);
 
 		std::array<glm::vec3, 8> splitFrustumVerticesArray = viewSplit.getFrustumVertices();
