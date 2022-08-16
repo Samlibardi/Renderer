@@ -41,7 +41,7 @@ void VulkanRenderer::createEnvPipeline() {
 
 	vk::PipelineDepthStencilStateCreateInfo depthStencilInfo{ {}, true, true, vk::CompareOp::eLessOrEqual };
 
-	vk::PipelineMultisampleStateCreateInfo multisampleInfo;
+	vk::PipelineMultisampleStateCreateInfo multisampleInfo{ {}, static_cast<vk::SampleCountFlagBits>(this->_settings.msaa) };
 
 	vk::PipelineColorBlendAttachmentState colorBlendAttachment(false, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
 	vk::PipelineColorBlendStateCreateInfo colorBlendInfo{ {}, false, vk::LogicOp::eCopy, colorBlendAttachment };

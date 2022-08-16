@@ -146,6 +146,7 @@ VulkanRenderer::~VulkanRenderer() {
 	this->device.destroyImageView(this->envMapSpecularImageView);
 	this->device.destroyImageView(this->colorImageView);
 	this->device.destroyImageView(this->depthImageView);
+	this->device.destroyImageView(this->colorImageMSView);
 
 	this->allocator.destroyImage(this->pointShadowMapsImage, this->pointShadowMapsImageAllocation);
 	this->allocator.destroyImage(this->staticPointShadowMapsImage, this->pointStaticShadowMapsImageAllocation);
@@ -154,6 +155,7 @@ VulkanRenderer::~VulkanRenderer() {
 	this->allocator.destroyImage(this->envMapSpecularImage, this->envMapSpecularAllocation);
 	this->allocator.destroyImage(this->colorImage, this->colorImageAllocation);
 	this->allocator.destroyImage(this->depthImage, this->depthImageAllocation);
+	this->allocator.destroyImage(this->colorImageMS, this->colorImageMSAllocation);
 
 	this->allocator.destroyBuffer(this->lightsBuffer, this->lightsBufferAllocation);
 	this->allocator.destroyBuffer(this->lightsStagingBuffer, this->lightsStagingBufferAllocation);
@@ -401,6 +403,14 @@ void VulkanRenderer::setPhysicalDevice(vk::PhysicalDevice physicalDevice) {
 		this->allocator.destroy();
 	}
 
+	auto properties = this->physicalDevice.getProperties();
+	auto availableMsaa = properties.limits.framebufferColorSampleCounts;
+	while (this->_settings.msaa != SampleCount::e1) {
+		if (availableMsaa & static_cast<vk::SampleCountFlags>(static_cast<std::underlying_type<SampleCount>::type>(this->_settings.msaa)))
+			break;
+		*reinterpret_cast<std::underlying_type<SampleCount>::type*>(&this->_settings.msaa) >>= 1;
+	}
+
 	std::vector<float> queuePriorities = { 1.0f };
 	vk::DeviceQueueCreateInfo queueCreateInfo = vk::DeviceQueueCreateInfo{{}, this->graphicsQueueFamilyIndex, queuePriorities};
 	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_16BIT_STORAGE_EXTENSION_NAME, VK_KHR_8BIT_STORAGE_EXTENSION_NAME };
@@ -586,11 +596,16 @@ void VulkanRenderer::createSwapchainAndAttachmentImages() {
 		this->swapchainImageViews.push_back(iv);
 	}
 
-	std::tie(this->depthImage, this->depthImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+	std::tie(this->depthImage, this->depthImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->depthAttachmentFormat, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, static_cast<vk::SampleCountFlagBits>(this->_settings.msaa), vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 	this->depthImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->depthImage, vk::ImageViewType::e2D, this->depthAttachmentFormat, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } });
 	
 	std::tie(this->colorImage, this->colorImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->colorAttachmentFormat, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 	this->colorImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->colorImage, vk::ImageViewType::e2D, this->colorAttachmentFormat, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } });
+
+	if (this->_settings.msaa != SampleCount::e1) {
+		std::tie(this->colorImageMS, this->colorImageMSAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, this->colorAttachmentFormat, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, static_cast<vk::SampleCountFlagBits>(this->_settings.msaa), vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eColorAttachment, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+		this->colorImageMSView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->colorImageMS, vk::ImageViewType::e2D, this->colorAttachmentFormat, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } });
+	}
 
 	std::tie(this->luminanceImage, this->luminanceImageAllocation) = this->allocator.createImage(vk::ImageCreateInfo{ {}, vk::ImageType::e2D, vk::Format::eR32Sfloat, vk::Extent3D{this->swapchainExtent, 1}, 1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive, {} }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
 	this->luminanceImageView = this->device.createImageView(vk::ImageViewCreateInfo{ {}, this->luminanceImage, vk::ImageViewType::e2D, vk::Format::eR32Sfloat, vk::ComponentMapping{}, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 } });
@@ -603,29 +618,59 @@ void VulkanRenderer::createSwapchainAndAttachmentImages() {
 }
 
 void VulkanRenderer::createRenderPass() {
+	if (this->_settings.msaa != SampleCount::e1) {
+		vk::AttachmentDescription mainColorMSAttachment{ {}, this->colorAttachmentFormat, static_cast<vk::SampleCountFlagBits>(this->_settings.msaa), vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
+		vk::AttachmentDescription mainDepthAttachment{ {}, this->depthAttachmentFormat, static_cast<vk::SampleCountFlagBits>(this->_settings.msaa), vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+		vk::AttachmentDescription mainColorAttachment{ {}, this->colorAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
+		std::vector<vk::AttachmentDescription> attachmentDescriptions = { mainColorMSAttachment, mainDepthAttachment, mainColorAttachment };
 
-	vk::AttachmentDescription mainColorAttachment{ {}, this->colorAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
-	vk::AttachmentDescription mainDepthAttachment{ {}, this->depthAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal };
-	std::vector<vk::AttachmentDescription> attachmentDescriptions = { mainColorAttachment, mainDepthAttachment };
+		std::array<vk::AttachmentReference, 1> mainColorAttachmentRefs{
+			vk::AttachmentReference{ 0, vk::ImageLayout::eColorAttachmentOptimal },
+		};
+		vk::AttachmentReference mainDepthAttachmentRef{ 1, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+		std::array<vk::AttachmentReference, 1> mainResolveAttachmentRefs{
+			vk::AttachmentReference{ 2, vk::ImageLayout::eColorAttachmentOptimal},
+		};
+		vk::SubpassDescription mainSubpass{ {}, vk::PipelineBindPoint::eGraphics, {}, mainColorAttachmentRefs, mainResolveAttachmentRefs, &mainDepthAttachmentRef };
 
-	std::vector<vk::AttachmentReference> mainColorAttachmentRefs{
-		vk::AttachmentReference{ 0, vk::ImageLayout::eColorAttachmentOptimal },
-	};
-	vk::AttachmentReference mainDepthAttachmentRef{ 1, vk::ImageLayout::eDepthStencilAttachmentOptimal };
-	vk::SubpassDescription mainSubpass{ {}, vk::PipelineBindPoint::eGraphics, {}, mainColorAttachmentRefs, {}, &mainDepthAttachmentRef };
+		std::vector<vk::SubpassDependency> subpassDependencies{
+			vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, vk::AccessFlagBits::eColorAttachmentWrite},
+			vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests,vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests, vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite},
+		};
 
-	std::vector<vk::SubpassDependency> subpassDependencies {
-		vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, vk::AccessFlagBits::eColorAttachmentWrite},
-		vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests,vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests, vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite},
-	};
+		std::vector<vk::SubpassDescription> subpasses = { mainSubpass };
 
-	std::vector<vk::SubpassDescription> subpasses = { mainSubpass };
-
-	this->renderPass = this->device.createRenderPass(vk::RenderPassCreateInfo{{}, attachmentDescriptions, subpasses, subpassDependencies });
+		this->renderPass = this->device.createRenderPass(vk::RenderPassCreateInfo{ {}, attachmentDescriptions, subpasses, subpassDependencies });
 
 
-	std::vector<vk::ImageView> attachments = { this->colorImageView, this->depthImageView };
-	this->mainFramebuffer = this->device.createFramebuffer(vk::FramebufferCreateInfo{{}, this->renderPass, attachments, this->swapchainExtent.width, this->swapchainExtent.height, 1});
+		std::vector<vk::ImageView> attachments = { this->colorImageMSView, this->depthImageView, this->colorImageView };
+		this->mainFramebuffer = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->renderPass, attachments, this->swapchainExtent.width, this->swapchainExtent.height, 1 });
+	}
+	else {
+		vk::AttachmentDescription mainColorAttachment{ {}, this->colorAttachmentFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal };
+		vk::AttachmentDescription mainDepthAttachment{ {}, this->depthAttachmentFormat, static_cast<vk::SampleCountFlagBits>(this->_settings.msaa), vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+		std::vector<vk::AttachmentDescription> attachmentDescriptions = { mainColorAttachment, mainDepthAttachment };
+
+		std::array<vk::AttachmentReference, 1> mainColorAttachmentRefs{
+			vk::AttachmentReference{ 0, vk::ImageLayout::eColorAttachmentOptimal },
+		};
+		vk::AttachmentReference mainDepthAttachmentRef{ 1, vk::ImageLayout::eDepthStencilAttachmentOptimal };
+
+		vk::SubpassDescription mainSubpass{ {}, vk::PipelineBindPoint::eGraphics, {}, mainColorAttachmentRefs, {}, &mainDepthAttachmentRef };
+
+		std::vector<vk::SubpassDependency> subpassDependencies{
+			vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, vk::AccessFlagBits::eColorAttachmentWrite},
+			vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests,vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests, vk::AccessFlagBits::eDepthStencilAttachmentWrite, vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite},
+		};
+
+		std::vector<vk::SubpassDescription> subpasses = { mainSubpass };
+
+		this->renderPass = this->device.createRenderPass(vk::RenderPassCreateInfo{ {}, attachmentDescriptions, subpasses, subpassDependencies });
+
+
+		std::vector<vk::ImageView> attachments = { this->colorImageView, this->depthImageView };
+		this->mainFramebuffer = this->device.createFramebuffer(vk::FramebufferCreateInfo{ {}, this->renderPass, attachments, this->swapchainExtent.width, this->swapchainExtent.height, 1 });
+	}
 }
 
 vk::ShaderModule VulkanRenderer::loadShader(const std::string& path) {
@@ -699,7 +744,7 @@ void VulkanRenderer::createPipeline() {
 	vk::PipelineDepthStencilStateCreateInfo depthStencilInfo{ {}, true, true, vk::CompareOp::eLess };
 	vk::PipelineDepthStencilStateCreateInfo wireframeDepthStencilInfo{ {}, false, false, vk::CompareOp::eAlways };
 
-	vk::PipelineMultisampleStateCreateInfo multisampleInfo;
+	vk::PipelineMultisampleStateCreateInfo multisampleInfo{ {}, static_cast<vk::SampleCountFlagBits>(this->_settings.msaa) };
 
 	vk::PipelineColorBlendAttachmentState opaqueColorBlendAttachment(false, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
 	vk::PipelineColorBlendStateCreateInfo opaqueColorBlendInfo{ {}, false, vk::LogicOp::eCopy, opaqueColorBlendAttachment };

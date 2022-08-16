@@ -28,19 +28,31 @@ struct TextureInfo {
 	uint32_t height = 1;
 };
 
+enum class SampleCount : uint32_t {
+	e1 = 1u,
+	e2 = 2u,
+	e4 = 4u,
+	e8 = 8u,
+	e16 = 16u,
+	e32 = 32u,
+	e64 = 64u,
+};
+
 struct RendererSettings {
 	bool hdrOutputEnabled = false;
 
 	bool dynamicShadowsEnabled = true;
-	uint32_t pointShadowMapResolution = 1024u;
-	uint16_t pointShadowMapCount = 16u;
-	uint32_t directionalShadowMapResolution = 4096u;
-	uint8_t directionalShadowCascadeLevels = 5u;
+	uint32_t pointShadowMapResolution = 512u;
+	uint16_t pointShadowMapCount = 8u;
+	uint32_t directionalShadowMapResolution = 2048u;
+	uint8_t directionalShadowCascadeLevels = 4u;
 
 	bool vsync = false;
 
 	float exposureBias = 0.0f;
 	float gamma = 2.2f;
+
+	SampleCount msaa = SampleCount::e4;
 };
 
 class VulkanRenderer
@@ -124,6 +136,10 @@ private:
 	vk::Image depthImage;
 	vk::ImageView depthImageView;
 	vma::Allocation depthImageAllocation;
+
+	vk::Image colorImageMS;
+	vk::ImageView colorImageMSView;
+	vma::Allocation colorImageMSAllocation;
 
 	vk::Image luminanceImage;
 	vk::ImageView luminanceImageView;
