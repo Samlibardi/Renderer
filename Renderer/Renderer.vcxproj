@@ -216,6 +216,7 @@ xcopy "$(ProjectDir)environment" "$(OutDir)environment"  /i /c /e /r /k /v /y</C
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Animation.cpp" />
+    <ClCompile Include="Buffer.cpp" />
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="DirectionalLight.cpp" />
     <ClCompile Include="main.cpp" />
@@ -233,6 +234,7 @@ xcopy "$(ProjectDir)environment" "$(OutDir)environment"  /i /c /e /r /k /v /y</C
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Animation.h" />
+    <ClInclude Include="Buffer.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="DirectionalLight.h" />
     <ClInclude Include="Flags.h" />
