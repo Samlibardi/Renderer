@@ -6,62 +6,49 @@
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
 
-#include "Vertex.h"
-#include "Texture.h"
-#include "Node.h"
+#include "Buffer.h"
 
-typedef struct {
-	glm::vec4 baseColorFactor;
-	glm::vec4 emissiveFactor;
-	float normalScale;
-	float metallicFactor;
-	float roughnessFactor;
-	float aoFactor;
-} PBRInfo;
-
-enum class AlphaMode {
-	eOpaque,
-	eMask,
-	eBlend,
+enum class ValueType {
+	eFloat,
+	eDouble,
+	eInt8,
+	eInt16,
+	eInt32,
+	eInt64
 };
 
-typedef struct AlphaInfo {
-	AlphaMode alphaMode = AlphaMode::eOpaque;
-	float alphaCutoff = 0.5f;
-} AlphaInfo;
+enum class AttributeType {
+	eScalar,
+	eVec2,
+	eVec3,
+	eVec4,
+};
+
+struct VertexAttributeDescription {
+	std::string attributeName;
+	Buffer buffer;
+	size_t offset;
+	size_t stride;
+	AttributeType componentType;
+	ValueType valueType;
+};
+
+struct IndexBufferDescription {
+	Buffer buffer;
+	size_t offset;
+	size_t stride;
+	ValueType indexType;
+};
 
 class Mesh {
-public:
-	glm::vec3 barycenter() { return this->_barycenter; }
+	size_t id;
+	std::vector<VertexAttributeDescription> vertexBufferDescription;
+	bool isIndexed;
+	IndexBufferDescription indexBufferDescription;
 	
-	std::shared_ptr<Node> node;
+public:
+	bool operator==(const Mesh& rhs) { return this->id == rhs.id; }
 
-	bool isIndexed = true;
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-	uint32_t firstVertexOffset;
-	uint32_t firstIndexOffset;
 
-	std::pair<glm::vec3, glm::vec3> boundingBox;
-
-	Texture albedoTexture{};
-	Texture normalTexture{};
-	Texture metalRoughnessTexture{};
-	Texture emissiveTexture{};
-	Texture aoTexture{};
-
-	PBRInfo materialInfo{};
-	AlphaInfo alphaInfo{};
-
-	bool hasDescriptorSet = false;
-	vk::DescriptorSet descriptorSet{};
-
-	void calculateTangents();
-	void calculateBarycenter();
-	void calculateBoundingBox();
-	Mesh boundingBoxAsMesh() const;
-
-private:
-	glm::vec3 _barycenter;
 };
 

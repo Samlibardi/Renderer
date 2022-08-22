@@ -17,6 +17,7 @@
 #include "DirectionalLight.h"
 #include "Texture.h"
 #include "Camera.h"
+#include "Buffer.h"
 
 typedef unsigned char byte;
 
@@ -89,6 +90,8 @@ class VulkanRenderer
 
 public:
 	VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings);
+	VulkanRenderer(const VulkanRenderer& other) = delete;
+	VulkanRenderer(VulkanRenderer&& other) = default;
 	~VulkanRenderer();
 	void start();
 
@@ -172,6 +175,8 @@ private:
 	std::array<vk::DescriptorSet, FRAMES_IN_FLIGHT> perFrameInFlightDescriptorSets;
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	std::vector<vk::DescriptorSet> tonemapDescriptorSets;
+
+	std::unordered_map<Buffer, std::tuple<vk::Buffer, vma::Allocation>> bufferTable;
 
 	vk::Buffer vertexIndexBuffer;
 	vma::Allocation vertexIndexBufferAllocation;
