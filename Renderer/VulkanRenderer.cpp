@@ -16,7 +16,7 @@
 
 
 VulkanRenderer::VulkanRenderer(const vkfw::Window window, const RendererSettings& rendererSettings) : _settings(rendererSettings) {
-	vk::ApplicationInfo appInfo{ "Sam's Vulkan Renderer", 1, "Custom Engine", 1, VK_API_VERSION_1_1 };
+	vk::ApplicationInfo appInfo{ "Sam's Vulkan Renderer", 1, "Custom Engine", 1, VK_API_VERSION_1_3 };
 #ifdef _DEBUG
 	const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 #else 

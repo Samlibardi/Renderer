@@ -10,7 +10,7 @@
 
 #include <glm/gtx/transform.hpp>
 
-#include <vk_mem_alloc.hpp>
+#include <vma/vk_mem_alloc.hpp>
 
 #include "Mesh.h"
 #include "PointLight.h"

@@ -4,7 +4,7 @@
 #include <memory>
 
 #include <vulkan/vulkan.hpp>
-#include <vk_mem_alloc.hpp>
+#include <vma/vk_mem_alloc.hpp>
 
 class Texture {
 	class TextureCore {
