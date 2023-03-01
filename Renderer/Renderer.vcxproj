@@ -57,52 +57,33 @@
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="conanbuildinfo.props" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="conanbuildinfo.props" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="conanbuildinfo.props" />
-    <Import Project="..\x64\Debug\.conan\conanbuildinfo.props" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="conanbuildinfo.props" />
-    <Import Project="..\x64\Release\.conan\conanbuildinfo.props" />
-  </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
     <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
-    <IncludePath>
-    </IncludePath>
-    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\include;$(IncludePath)</IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
-    <IncludePath>
-    </IncludePath>
-    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\include;$(IncludePath)</IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
-    <IncludePath>
-    </IncludePath>
-    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\include;$(IncludePath)</IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <ExternalIncludePath>%VULKAN_SDK%\Include;%VULKAN_SDK%\Third-Party\Include;$(IncludePath);$(ConanIncludeDirectories);$(ExternalIncludePath)</ExternalIncludePath>
-    <IncludePath>
-    </IncludePath>
-    <LibraryPath>%VULKAN_SDK%\Lib;$(ConanLibraryDirectories);$(LibraryPath)</LibraryPath>
+    <IncludePath>$(ProjectDir)\include;$(IncludePath)</IncludePath>
+    <LibraryPath>%VULKAN_SDK%\Lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
