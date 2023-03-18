@@ -66,9 +66,6 @@
     <ClCompile Include="VulkanRendererTonemap.cpp">
       <Filter>Source Files\C++</Filter>
     </ClCompile>
-    <ClCompile Include="Buffer.cpp">
-      <Filter>Source Files\C++</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="VulkanRenderer.h">

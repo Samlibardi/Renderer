@@ -301,8 +301,8 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 
 		const glm::vec3& cameraPos = light->point;
 
-		std::vector<std::shared_ptr<Mesh>> sortedMeshes;
-		for (const auto& el : iter::sorted(this->staticMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter(), cameraPos) < glm::distance(b->barycenter(), cameraPos); }))
+		std::vector<std::shared_ptr<MeshPrimitive>> sortedMeshes;
+		for (const auto& el : iter::sorted(this->staticMeshes, [&cameraPos](const std::shared_ptr<MeshPrimitive>& a, const std::shared_ptr<MeshPrimitive>& b) { return glm::distance(a->barycenter(), cameraPos) < glm::distance(b->barycenter(), cameraPos); }))
 			sortedMeshes.push_back(el);
 
 		for (unsigned short j = 0; j < 6; j++) {
@@ -312,7 +312,7 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 			pov.setPosition(cameraPos);
 			glm::mat4 viewproj = pov.viewProjMatrix();
 
-			auto culledMeshes = iter::filter([this, &pov](const std::shared_ptr<Mesh> mesh) {
+			auto culledMeshes = iter::filter([this, &pov](const std::shared_ptr<MeshPrimitive> mesh) {
 				return !this->cullMesh(*mesh, pov);
 				}, sortedMeshes);
 
@@ -344,8 +344,8 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 	for (const auto& light : sortedPointLights) {
 		const glm::vec3 cameraPos = light->point;
 
-		std::vector<std::shared_ptr<Mesh>> sortedMeshes;
-		for (const auto& el : iter::sorted(this->dynamicMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter(), cameraPos) < glm::distance(b->barycenter(), cameraPos); }))
+		std::vector<std::shared_ptr<MeshPrimitive>> sortedMeshes;
+		for (const auto& el : iter::sorted(this->dynamicMeshes, [&cameraPos](const std::shared_ptr<MeshPrimitive>& a, const std::shared_ptr<MeshPrimitive>& b) { return glm::distance(a->barycenter(), cameraPos) < glm::distance(b->barycenter(), cameraPos); }))
 			sortedMeshes.push_back(el);
 
 		for (unsigned short j = 0; j < 6; j++) {
@@ -354,7 +354,7 @@ void VulkanRenderer::recordPointShadowMapsCommands(vk::CommandBuffer cb, uint32_
 			pov.setPosition(cameraPos);
 			glm::mat4 viewproj = pov.viewProjMatrix();
 
-			auto culledMeshes = iter::filter([this, &pov](const std::shared_ptr<Mesh> mesh) {
+			auto culledMeshes = iter::filter([this, &pov](const std::shared_ptr<MeshPrimitive> mesh) {
 				return !this->cullMesh(*mesh, pov);
 				}, sortedMeshes);
 
@@ -420,12 +420,12 @@ void VulkanRenderer::recordDirectionalShadowMapsCommands(vk::CommandBuffer cb, u
 		glm::mat4 viewproj = splitPov.viewProjMatrix();
 		csmSplitsData[i] = CSMSplitShaderData{ viewproj, this->directionalShadowCascadeCameraSpaceDepths[i] };
 
-		std::vector<std::shared_ptr<Mesh>> sortedMeshes;
-		for (const auto& el : iter::sorted(this->meshes, [&splitPov](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter(), splitPov.position()) < glm::distance(b->barycenter(), splitPov.position()); }))
+		std::vector<std::shared_ptr<MeshPrimitive>> sortedMeshes;
+		for (const auto& el : iter::sorted(this->meshes, [&splitPov](const std::shared_ptr<MeshPrimitive>& a, const std::shared_ptr<MeshPrimitive>& b) { return glm::distance(a->barycenter(), splitPov.position()) < glm::distance(b->barycenter(), splitPov.position()); }))
 			sortedMeshes.push_back(el);
 
 
-		auto culledMeshes = iter::filter([this, &splitPov](const std::shared_ptr<Mesh> mesh) {
+		auto culledMeshes = iter::filter([this, &splitPov](const std::shared_ptr<MeshPrimitive> mesh) {
 			return !this->cullMesh(*mesh, splitPov);
 			}, sortedMeshes);
 

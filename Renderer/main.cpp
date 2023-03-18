@@ -19,7 +19,10 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
 #define TINYGLTF_NO_EXTERNAL_IMAGE
+#define TINYGLTF_USE_CPP14
 #include <tiny_gltf.h>
+
+#include <cppitertools/imap.hpp>
 
 #include "Mesh.h"
 
@@ -55,12 +58,12 @@ TextureInfo loadTexture(const char* path) {
 	return TextureInfo{ data, static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
 }
 
-std::vector<Mesh> makeMesh(tinygltf::Mesh gltfMesh, std::shared_ptr<Node> node, tinygltf::Model gltfModel, const std::string& gltfFilename) {
+std::vector<MeshPrimitive> makeMesh(tinygltf::Mesh gltfMesh, std::shared_ptr<Node> node, tinygltf::Model gltfModel, const std::string& gltfFilename) {
 	auto path = std::filesystem::path(gltfFilename).remove_filename();
 
-	std::vector<Mesh> loadedMeshes;
+	std::vector<MeshPrimitive> loadedMeshes;
 	for (auto& primitive : gltfMesh.primitives) {
-		Mesh loadedMesh{};
+		MeshPrimitive loadedMesh{};
 		bool meshHasTangents = false;
 
 		loadedMesh.node = node;
@@ -173,11 +176,11 @@ std::vector<Mesh> makeMesh(tinygltf::Mesh gltfMesh, std::shared_ptr<Node> node, 
 	return loadedMeshes;
 }
 
-std::tuple<std::shared_ptr<Node>, std::vector<Mesh>> makeNode(const int nodeIndex, const tinygltf::Model& gltfModel, const std::string& gltfFilename) {
+std::tuple<std::shared_ptr<Node>, std::vector<MeshPrimitive>> makeNode(const int nodeIndex, const tinygltf::Model& gltfModel, const std::string& gltfFilename) {
 
 	auto& gltfNode = gltfModel.nodes[nodeIndex];
 
-	std::vector<Mesh> meshes{};
+	std::vector<MeshPrimitive> meshes{};
 	std::vector<std::shared_ptr<Node>> children{};
 	for (auto& childIndex : gltfNode.children) {
 		auto&& [childNode, childMeshes] = makeNode(childIndex, gltfModel, gltfFilename);
@@ -278,14 +281,130 @@ std::tuple<std::shared_ptr<Node>, std::vector<Mesh>> makeNode(const int nodeInde
 	return { node, meshes };
 }
 
+constexpr AttributeValueType attributeValueTypeFromGltfComponentType(const int gltfType) {
+	switch (gltfType) {
+	case TINYGLTF_COMPONENT_TYPE_FLOAT:
+		return AttributeValueType::eFloat;
+	case TINYGLTF_COMPONENT_TYPE_DOUBLE:
+		return AttributeValueType::eDouble;
+	case TINYGLTF_COMPONENT_TYPE_INT:
+		return AttributeValueType::eInt32;
+	case TINYGLTF_COMPONENT_TYPE_SHORT:
+		return AttributeValueType::eInt16;
+	case TINYGLTF_COMPONENT_TYPE_BYTE:
+		return AttributeValueType::eInt8;
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+		return AttributeValueType::eUint32;
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+		return AttributeValueType::eUint16;
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+		return AttributeValueType::eUint8;
+	default:
+		return AttributeValueType::eInt8;
+	}
+}
+
+constexpr AttributeContainerType attributeContainerTypeFromGltfType(const int gltfType) {
+	switch (gltfType) {
+	case TINYGLTF_TYPE_SCALAR:
+		return AttributeContainerType::eScalar;
+	case TINYGLTF_TYPE_VEC2:
+		return AttributeContainerType::eVec2;
+	case TINYGLTF_TYPE_VEC3:
+		return AttributeContainerType::eVec3;
+	case TINYGLTF_TYPE_VEC4:
+		return AttributeContainerType::eVec4;
+	default:
+		return AttributeContainerType::eScalar;
+	}
+}
+
+constexpr MeshPrimitiveMode primitiveModeFromGltfMode(const int gltfMode) {
+	switch (gltfMode) {
+	case TINYGLTF_MODE_POINTS:
+		return MeshPrimitiveMode::ePoints;
+	case TINYGLTF_MODE_LINE:
+		return MeshPrimitiveMode::eLines;
+	case TINYGLTF_MODE_LINE_LOOP:
+		return MeshPrimitiveMode::eLineLoop;
+	case TINYGLTF_MODE_LINE_STRIP:
+		return MeshPrimitiveMode::eLineStrip;
+	case TINYGLTF_MODE_TRIANGLES:
+		return MeshPrimitiveMode::eTriangles;
+	case TINYGLTF_MODE_TRIANGLE_STRIP:
+		return MeshPrimitiveMode::eTriangleStrip;
+	case TINYGLTF_MODE_TRIANGLE_FAN:
+		return MeshPrimitiveMode::eTriangleFan;
+	}
+}
+
 void openGltf(const std::string& filename) {
 	tinygltf::TinyGLTF gltfLoader;
 	tinygltf::Model gltfModel;
 	gltfLoader.LoadASCIIFromFile(&gltfModel, nullptr, nullptr, filename);
 
-	std::vector<Mesh> loadedMeshes{};
+	std::vector<MeshPrimitive> loadedMeshes{};
 	std::vector<std::shared_ptr<Node>> rootNodes;
 	tinygltf::Scene& scene = gltfModel.scenes[gltfModel.defaultScene];
+
+	std::vector<Buffer> loadedBuffers;
+	loadedBuffers.reserve(gltfModel.buffers.size());
+
+	for (const auto& gltfBuffer : gltfModel.buffers) {
+		loadedBuffers.push_back(renderer->loadBuffer(reinterpret_cast<const void*>(gltfBuffer.data.data()), gltfBuffer.data.size()));
+	}
+
+	std::vector<Mesh> meshes;
+	meshes.reserve(gltfModel.meshes.size());
+
+	for (const auto& gltfMesh : gltfModel.meshes) {
+		std::vector<MeshPrimitive> primitives;
+		primitives.reserve(gltfMesh.primitives.size());
+		for (const auto& gltfPrimitive : gltfMesh.primitives) {
+			std::vector<VertexAttributeDescription> attributeDescriptions;
+
+			glm::vec<3, double> bbMin{}, bbMax{};
+
+			for (const auto& [attributeName, accessorIndex] : gltfPrimitive.attributes) {
+				const auto& gltfAccessor = gltfModel.accessors[accessorIndex];
+				const auto& gltfBufferView = gltfModel.bufferViews[gltfAccessor.bufferView];
+
+				attributeDescriptions.emplace_back(VertexAttributeDescription{
+					.attributeName = attributeName,
+					.buffer = loadedBuffers[gltfBufferView.buffer],
+					.offset = gltfBufferView.byteOffset + gltfAccessor.byteOffset,
+					.stride = gltfAccessor.ByteStride(gltfBufferView),
+					.count = gltfAccessor.count,
+					.containerType = attributeContainerTypeFromGltfType(gltfAccessor.type),
+					.valueType = attributeValueTypeFromGltfComponentType(gltfAccessor.componentType),
+					});
+				
+				if (attributeName == "POSITION") {
+					bbMin = glm::vec<3, double>(gltfAccessor.minValues[0], gltfAccessor.minValues[1], gltfAccessor.minValues[2]);
+					bbMax = glm::vec<3, double>(gltfAccessor.maxValues[0], gltfAccessor.maxValues[1], gltfAccessor.maxValues[2]);
+				}
+			}
+
+			if (gltfPrimitive.indices > -1) {
+				const auto& gltfAccessor = gltfModel.accessors[gltfPrimitive.indices];
+				const auto& gltfBufferView = gltfModel.bufferViews[gltfAccessor.bufferView];
+
+				IndexBufferDescription indexBufferDescription{
+					.buffer = loadedBuffers[gltfBufferView.buffer],
+					.offset = gltfBufferView.byteOffset + gltfAccessor.byteOffset,
+					.stride = gltfAccessor.ByteStride(gltfBufferView),
+					.count = gltfAccessor.count,
+					.indexType = attributeValueTypeFromGltfComponentType(gltfAccessor.componentType),
+				};
+
+				primitives.emplace_back(std::move(attributeDescriptions), std::move(indexBufferDescription), bbMin, bbMax, primitiveModeFromGltfMode(gltfPrimitive.mode));
+			}
+			else {
+				primitives.emplace_back(std::move(attributeDescriptions), bbMin, bbMax, primitiveModeFromGltfMode(gltfPrimitive.mode));
+			}
+		}
+		meshes.emplace_back(std::move(primitives), std::make_shared<Node>());
+	}
 	
 	for (auto& gltfNode : scene.nodes) {
 		auto [childNode, childMeshes] = makeNode(gltfNode, gltfModel, filename);

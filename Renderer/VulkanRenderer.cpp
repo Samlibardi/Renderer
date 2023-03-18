@@ -179,8 +179,6 @@ VulkanRenderer::~VulkanRenderer() {
 	this->device.destroySampler(this->shadowMapSampler);
 	this->device.destroySampler(this->textureSampler);
 
-	this->destroyVertexBuffer();
-
 	this->device.destroySwapchainKHR(this->swapchain);
 	this->device.destroyCommandPool(this->commandPool);
 	this->device.destroy();
@@ -271,11 +269,41 @@ void VulkanRenderer::setRootNodes(std::vector<std::shared_ptr<Node>> nodes) {
 	this->rootNodes = nodes;
 }
 
+Buffer VulkanRenderer::loadBuffer(const void* _ptr, size_t size) {
+	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
+	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+
+	auto [deviceBuffer, deviceAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, size, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
+
+	auto [stagingBuffer, SBAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, size, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, vma::MemoryUsage::eAuto });
+
+	unsigned char* stagingData = reinterpret_cast<unsigned char*>(this->allocator.mapMemory(SBAllocation));
+	std::memcpy(stagingData, _ptr, size);
+
+	cb.copyBuffer(stagingBuffer, deviceBuffer, vk::BufferCopy{0, 0, size});
+
+	cb.end();
+
+	vk::Fence fence = this->device.createFence(vk::FenceCreateInfo{});
+	this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, {} }, fence);
+	this->device.waitForFences(fence, true, UINT64_MAX);
+	this->allocator.destroyBuffer(stagingBuffer, SBAllocation);
+	this->device.freeCommandBuffers(this->commandPool, cb);
+	this->device.destroyFence(fence);
+	this->allocator.unmapMemory(SBAllocation);
+
+	bufferTable.insert({ this->nextBufferId++, {deviceBuffer, deviceAllocation} });
+}
+
+void VulkanRenderer::addMesh(const Mesh& mesh) {
+	this->meshes.push_back(mesh);
+}
+
 void VulkanRenderer::setMeshes(const std::vector<Mesh>& meshes) {
 	this->destroyVertexBuffer();
 	
 	for (const Mesh& mesh : meshes) {
-		auto meshPtr = std::make_shared<Mesh>(mesh);
+		auto meshPtr = std::make_shared<MeshPrimitive>(mesh);
 		switch (mesh.alphaInfo.alphaMode) {
 		case AlphaMode::eOpaque:
 			this->opaqueMeshes.push_back(meshPtr);
@@ -294,7 +322,7 @@ void VulkanRenderer::setMeshes(const std::vector<Mesh>& meshes) {
 		else
 			this->dynamicMeshes.push_back(meshPtr);
 		this->meshes.push_back(meshPtr);
-		this->boundingBoxMeshes.push_back(std::make_shared<Mesh>(mesh.boundingBoxAsMesh()));
+		this->boundingBoxMeshes.push_back(std::make_shared<MeshPrimitive>(mesh.boundingBoxAsMesh()));
 	}
 
 	vk::DeviceSize minBufferAlignment = this->physicalDevice.getProperties().limits.minUniformBufferOffsetAlignment;
@@ -813,69 +841,11 @@ void VulkanRenderer::createPipeline() {
 	}
 }
 
-void VulkanRenderer::createVertexBuffer() {
-	vk::CommandBuffer cb = this->device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ this->commandPool, vk::CommandBufferLevel::ePrimary, 1 })[0];
-	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
-
-	size_t vertexBufferSize = 0u;
-	size_t indexBufferSize = 0u;
-	auto meshes = iter::chain(this->meshes, this->boundingBoxMeshes);
-	for (auto& mesh : meshes) {
-		vertexBufferSize += mesh->vertices.size() * sizeof(Vertex);
-		if (mesh->isIndexed)
-			indexBufferSize += mesh->indices.size() * sizeof(uint32_t);
-	}
-
-	std::tie(this->vertexIndexBuffer, this->vertexIndexBufferAllocation) = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly });
-
-	auto [stagingBuffer, SBAllocation] = this->allocator.createBuffer(vk::BufferCreateInfo{ {}, vertexBufferSize + indexBufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eCpuOnly });
-
-	unsigned char* stagingData = reinterpret_cast<unsigned char*>(this->allocator.mapMemory(SBAllocation));
-	size_t vbOffset = 0, ibOffset = 0;
-	uint32_t vertexCount = 0, indexCount = 0;
-	for (auto& mesh : meshes) {
-		size_t len = mesh->vertices.size() * sizeof(Vertex);
-		memcpy(stagingData + vbOffset, mesh->vertices.data(), len);
-		vbOffset += len;
-
-		if (mesh->isIndexed) {
-			len = mesh->indices.size() * sizeof(uint32_t);
-			for (auto [i, index] : iter::enumerate(mesh->indices)) {
-				*(reinterpret_cast<uint32_t*>(stagingData + vertexBufferSize + ibOffset) + i) = index + vertexCount;
-			}
-			ibOffset += len;
-		}
-		
-		mesh->firstIndexOffset = indexCount;
-		mesh->firstVertexOffset = vertexCount;
-		indexCount += static_cast<uint32_t>(mesh->indices.size());
-		vertexCount += static_cast<uint32_t>(mesh->vertices.size());
-	}
-	this->allocator.unmapMemory(SBAllocation);
-
-	cb.copyBuffer(stagingBuffer, this->vertexIndexBuffer, vk::BufferCopy{0, 0, vertexBufferSize + indexBufferSize});
-	this->vertexBufferOffset = 0u;
-	this->indexBufferOffset = vertexBufferSize;
-
-	cb.end();
-
-	vk::Fence fence = this->device.createFence(vk::FenceCreateInfo{});
-	this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, {} }, fence);
-	this->device.waitForFences(fence, true, UINT64_MAX);
-	this->allocator.destroyBuffer(stagingBuffer, SBAllocation);
-	this->device.freeCommandBuffers(this->commandPool, cb);
-	this->device.destroyFence(fence);
-}
-
-void VulkanRenderer::destroyVertexBuffer() {
-	this->allocator.destroyBuffer(this->vertexIndexBuffer, this->vertexIndexBufferAllocation);
-}
-
-bool VulkanRenderer::cullMesh(const Mesh& mesh) {
+bool VulkanRenderer::cullMesh(const MeshPrimitive& mesh) {
 	return this->cullMesh(mesh, this->_camera);
 }
 
-bool VulkanRenderer::cullMesh(const Mesh& mesh, const Camera& pov) {
+bool VulkanRenderer::cullMesh(const MeshPrimitive& mesh, const Camera& pov) {
 	const auto& planes = pov.getFrustumPlanesLocalSpace(mesh.node->modelMatrix()); //planes pointing inside frustum
 
 	for (auto& plane : planes) {
@@ -891,20 +861,33 @@ bool VulkanRenderer::cullMesh(const Mesh& mesh, const Camera& pov) {
 	return false;
 }
 
-void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull, MeshSortingMode sortingMode) {
+constexpr vk::IndexType vkIndexTypeFromAttributeValueType(AttributeValueType valueType) {
+	switch (valueType) {
+	case AttributeValueType::eUint8:
+		return vk::IndexType::eUint8EXT;
+	case AttributeValueType::eUint32:
+		return vk::IndexType::eUint32;
+	case AttributeValueType::eUint16:
+		return vk::IndexType::eUint16;
+	default:
+		return vk::IndexType::eNoneKHR;
+	}
+}
 
-	auto culledMeshes = iter::filter([this](const std::shared_ptr<Mesh> mesh) {
+void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<MeshPrimitive>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull, MeshSortingMode sortingMode) {
+
+	auto culledMeshes = iter::filter([this](const std::shared_ptr<MeshPrimitive> mesh) {
 		return !this->cullMesh(*mesh);
 		}, meshes);
 
-	std::vector<std::shared_ptr<Mesh>> sortedMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> sortedMeshes;
 	switch (sortingMode) {
 	case MeshSortingMode::eFrontToBack:
-		for (const auto& el : iter::sorted(culledMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter(), cameraPos) < glm::distance(b->barycenter(), cameraPos); }))
+		for (const auto& el : iter::sorted(culledMeshes, [&cameraPos](const std::shared_ptr<MeshPrimitive>& a, const std::shared_ptr<MeshPrimitive>& b) { return glm::distance(a->barycenter(), cameraPos) < glm::distance(b->barycenter(), cameraPos); }))
 			sortedMeshes.push_back(el);
 		break;
 	case MeshSortingMode::eBackToFront:
-		for (const auto& el : iter::sorted(culledMeshes, [&cameraPos](const std::shared_ptr<Mesh>& a, const std::shared_ptr<Mesh>& b) { return glm::distance(a->barycenter(), cameraPos) > glm::distance(b->barycenter(), cameraPos); }))
+		for (const auto& el : iter::sorted(culledMeshes, [&cameraPos](const std::shared_ptr<MeshPrimitive>& a, const std::shared_ptr<MeshPrimitive>& b) { return glm::distance(a->barycenter(), cameraPos) > glm::distance(b->barycenter(), cameraPos); }))
 			sortedMeshes.push_back(el);
 		break;
 	default:
@@ -928,10 +911,22 @@ void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes
 
 		cb.pushConstants<glm::mat4x4>(this->pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushConstants);
 
-		if (mesh->isIndexed)
-			cb.drawIndexed(static_cast<uint32_t>(mesh->indices.size()), 1, mesh->firstIndexOffset, 0, 0);
+		std::vector<vk::Buffer> vertexBuffers{};
+		std::vector<size_t> vertexBufferOffsets{};
+
+		for (auto& attr : mesh->vertexBufferDescription()) {
+			vertexBuffers.push_back(std::get<0>(this->bufferTable[attr.buffer.id]));
+			vertexBufferOffsets.push_back(attr.offset);
+		}
+
+		cb.bindVertexBuffers(0, vertexBuffers, vertexBufferOffsets);
+
+		if (mesh->isIndexed()) {
+			cb.bindIndexBuffer(std::get<0>(this->bufferTable[mesh->indexBufferDescription().buffer.id]), mesh->indexBufferDescription().offset, vkIndexTypeFromAttributeValueType(mesh->indexBufferDescription().indexType));
+			cb.drawIndexed(static_cast<uint32_t>(mesh->indexBufferDescription().count), 1, 0, 0, 0);
+		}
 		else
-			cb.draw(static_cast<uint32_t>(mesh->vertices.size()), 1, mesh->firstVertexOffset, 0);
+			cb.draw(static_cast<uint32_t>(mesh->vertexBufferDescription()[0].count), 1, 0, 0);
 	}
 }
 
@@ -982,8 +977,6 @@ void VulkanRenderer::renderLoop() {
 		cb.reset();
 		cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
-		cb.bindVertexBuffers(0, this->vertexIndexBuffer, { 0 });
-		cb.bindIndexBuffer(this->vertexIndexBuffer, this->indexBufferOffset, vk::IndexType::eUint32);
 		cb.beginRenderPass(vk::RenderPassBeginInfo{ this->renderPass, this->mainFramebuffer, vk::Rect2D({ 0, 0 }, this->swapchainExtent), clearValues }, vk::SubpassContents::eInline);
 
 		if (!this->opaqueMeshes.empty()) {

@@ -197,7 +197,6 @@ xcopy "$(ProjectDir)environment" "$(OutDir)environment"  /i /c /e /r /k /v /y</C
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Animation.cpp" />
-    <ClCompile Include="Buffer.cpp" />
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="DirectionalLight.cpp" />
     <ClCompile Include="main.cpp" />

@@ -5,6 +5,7 @@
     "glm",
     "stb",
     "tinygltf",
-    "cppitertools"
+    "cppitertools",
+    "boost"
   ]
 }

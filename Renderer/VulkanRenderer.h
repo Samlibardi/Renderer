@@ -96,9 +96,10 @@ public:
 	void start();
 
 	void setRootNodes(std::vector<std::shared_ptr<Node>> nodes);
-	void setMeshes(const std::vector<Mesh>& meshes);
 	void setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos);
 	void setLights(const std::vector<PointLight>& pointLights, const DirectionalLight& directionalLight);
+	Buffer loadBuffer(const void* _ptr, size_t size);
+	void addMesh(const Mesh& mesh);
 
 	Camera& camera() { return this->_camera; };
 
@@ -176,12 +177,8 @@ private:
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	std::vector<vk::DescriptorSet> tonemapDescriptorSets;
 
-	std::unordered_map<Buffer, std::tuple<vk::Buffer, vma::Allocation>> bufferTable;
-
-	vk::Buffer vertexIndexBuffer;
-	vma::Allocation vertexIndexBufferAllocation;
-	size_t vertexBufferOffset;
-	size_t indexBufferOffset;
+	uint32_t nextBufferId = 0u;
+	std::unordered_map<uint32_t, std::tuple<vk::Buffer, vma::Allocation>> bufferTable;
 
 	std::array <vk::Buffer, FRAMES_IN_FLIGHT> cameraBuffers;
 	std::array <vma::Allocation, FRAMES_IN_FLIGHT> cameraBufferAllocations;
@@ -236,15 +233,15 @@ private:
 
 	std::shared_mutex vertexBufferMutex;
 	
-	std::vector<std::shared_ptr<Mesh>> opaqueMeshes;
-	std::vector<std::shared_ptr<Mesh>> nonOpaqueMeshes;
-	std::vector<std::shared_ptr<Mesh>> alphaMaskMeshes;
-	std::vector<std::shared_ptr<Mesh>> alphaBlendMeshes;
-	std::vector<std::shared_ptr<Mesh>> boundingBoxMeshes;
-	std::vector<std::shared_ptr<Mesh>> staticMeshes;
-	std::vector<std::shared_ptr<Mesh>> dynamicMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> opaqueMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> nonOpaqueMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> alphaMaskMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> alphaBlendMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> boundingBoxMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> staticMeshes;
+	std::vector<std::shared_ptr<MeshPrimitive>> dynamicMeshes;
 
-	std::vector<std::shared_ptr<Mesh>> meshes;
+	std::vector<Mesh> meshes;
 
 	std::vector<std::shared_ptr<Node>> rootNodes;
 
@@ -324,8 +321,6 @@ private:
 	vk::ShaderModule loadShader(const std::string& path);
 	void createPipeline();
 	void createTonemapPipeline();
-	void createVertexBuffer();
-	void destroyVertexBuffer();
 	void createEnvPipeline();
 	
 	void createAverageLuminancePipeline();
@@ -356,10 +351,10 @@ private:
 	void recordUpdateLightsBufferCommands(const vk::CommandBuffer& cb);
 
 	void renderLoop();
-	void drawMeshes(const std::vector<std::shared_ptr<Mesh>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);
+	void drawMeshes(const std::vector<std::shared_ptr<MeshPrimitive>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);
 	
-	bool cullMesh(const Mesh& mesh);
-	bool cullMesh(const Mesh& mesh, const Camera& pov);
+	bool cullMesh(const MeshPrimitive& mesh);
+	bool cullMesh(const MeshPrimitive& mesh, const Camera& pov);
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 };
