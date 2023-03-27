@@ -18,6 +18,8 @@
 #include "Texture.h"
 #include "Camera.h"
 #include "Buffer.h"
+#include "Image.h"
+#include "Sampler.h"
 
 typedef unsigned char byte;
 
@@ -95,11 +97,13 @@ public:
 	~VulkanRenderer();
 	void start();
 
-	void setRootNodes(std::vector<std::shared_ptr<Node>> nodes);
+	void setRootNodes(const std::vector<Node*>& nodes);
 	void setEnvironmentMap(const std::array<TextureInfo, 6>& textureInfos);
 	void setLights(const std::vector<PointLight>& pointLights, const DirectionalLight& directionalLight);
-	Buffer loadBuffer(const void* _ptr, size_t size);
+	Buffer loadBuffer(const void* ptr, size_t size);
 	void addMesh(const Mesh& mesh);
+	Image loadImage(const void* ptr, size_t size, uint32_t width, uint32_t height, ImageFormat imageFormat, uint32_t maxMipLevels = UINT32_MAX);
+	Texture makeTexture(Image image, Sampler sampler);
 
 	Camera& camera() { return this->_camera; };
 
@@ -177,8 +181,17 @@ private:
 	vk::DescriptorSetLayout tonemapDescriptorSetLayout;
 	std::vector<vk::DescriptorSet> tonemapDescriptorSets;
 
-	uint32_t nextBufferId = 0u;
-	std::unordered_map<uint32_t, std::tuple<vk::Buffer, vma::Allocation>> bufferTable;
+	Buffer nextBufferId{0U};
+	std::unordered_map<Buffer, vk::Buffer> bufferTable;
+	std::unordered_map<Buffer, vma::Allocation> bufferAllocationTable;
+	Image nextImageId{0U};
+	std::unordered_map<Image, vk::Image> imageTable;
+	std::unordered_map<Image, vma::Allocation> imageAllocationTable;
+	std::unordered_map<Image, vk::Format> imageFormatTable;
+	Texture nextTextureId{0U};
+	std::unordered_map<Texture, vk::ImageView> textureImageViewTable;
+	std::unordered_map<Texture, vk::Sampler> textureSamplerTable;
+
 
 	std::array <vk::Buffer, FRAMES_IN_FLIGHT> cameraBuffers;
 	std::array <vma::Allocation, FRAMES_IN_FLIGHT> cameraBufferAllocations;
@@ -243,7 +256,7 @@ private:
 
 	std::vector<Mesh> meshes;
 
-	std::vector<std::shared_ptr<Node>> rootNodes;
+	std::vector<Node*> rootNodes;
 
 	vk::RenderPass shadowMapRenderPass;
 	vk::RenderPass staticShadowMapRenderPass;
@@ -353,8 +366,7 @@ private:
 	void renderLoop();
 	void drawMeshes(const std::vector<std::shared_ptr<MeshPrimitive>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull = false, MeshSortingMode sortingMode = MeshSortingMode::eNone);
 	
-	bool cullMesh(const MeshPrimitive& mesh);
-	bool cullMesh(const MeshPrimitive& mesh, const Camera& pov);
+	bool shouldCullMesh(const MeshPrimitive& mesh, const Node& node, const Camera& pov);
 
 	std::tuple<vk::Image, vk::ImageView, vma::Allocation> createImageFromTextureInfo(TextureInfo& textureInfo);
 };

@@ -1,6 +1,5 @@
 #pragma once
 
-class Buffer {
-public:
-	uint32_t id;
-};
+#include "Handle.h"
+
+typedef Handle<uint32_t, __COUNTER__> Buffer;

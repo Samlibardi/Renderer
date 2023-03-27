@@ -7,6 +7,7 @@
 #include <cppitertools/sorted.hpp>
 
 #include "VulkanRenderer.h"
+#include "VulkanRendererHelpers.h"
 
 #include <glm/gtx/normal.hpp>
 
@@ -265,7 +266,7 @@ void VulkanRenderer::recordUpdateLightsBufferCommands(const vk::CommandBuffer& c
 	cb.copyBuffer(lightsStagingBuffer, this->lightsBuffer, vk::BufferCopy{0, 0, bufferSize});
 }
 
-void VulkanRenderer::setRootNodes(std::vector<std::shared_ptr<Node>> nodes) {
+void VulkanRenderer::setRootNodes(const std::vector<Node*>& nodes) {
 	this->rootNodes = nodes;
 }
 
@@ -292,11 +293,95 @@ Buffer VulkanRenderer::loadBuffer(const void* _ptr, size_t size) {
 	this->device.destroyFence(fence);
 	this->allocator.unmapMemory(SBAllocation);
 
-	bufferTable.insert({ this->nextBufferId++, {deviceBuffer, deviceAllocation} });
+	bufferTable.insert({ this->nextBufferId, deviceBuffer });
+	bufferAllocationTable.insert({ this->nextBufferId, deviceAllocation });
+	return this->nextBufferId++;
 }
 
 void VulkanRenderer::addMesh(const Mesh& mesh) {
 	this->meshes.push_back(mesh);
+}
+
+Buffer VulkanRenderer::loadImage(const void* ptr, size_t size, uint32_t width, uint32_t height, ImageFormat imageFormat, uint32_t maxMipLevels = UINT32_MAX) {
+	auto [stagingBuffer, stagingBufferAllocation] = allocator.createBuffer(vk::BufferCreateInfo{ {}, size, vk::BufferUsageFlagBits::eTransferSrc, vk::SharingMode::eExclusive }, vma::AllocationCreateInfo{ vma::AllocationCreateFlagBits::eHostAccessSequentialWrite, vma::MemoryUsage::eAuto });
+	void* sbData = allocator.mapMemory(stagingBufferAllocation);
+	std::memcpy(sbData, ptr, size);
+	allocator.unmapMemory(stagingBufferAllocation);
+
+	uint32_t mipLevels = 1u;
+	uint32_t maxDim = std::max(width, height);
+	if (maxDim > 1u) mipLevels = std::floor(std::log2(maxDim)) + 1;
+
+	mipLevels = std::min(mipLevels, maxMipLevels);
+
+	vk::Format format = vkFormatFromImageFormat(imageFormat);
+	
+	auto && [image, imageAllocation] = allocator.createImage(
+		vk::ImageCreateInfo{ {}, vk::ImageType::e2D, format, vk::Extent3D{width, height, 1}, mipLevels, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::SharingMode::eExclusive },
+		vma::AllocationCreateInfo{ {}, vma::MemoryUsage::eGpuOnly }
+	);
+
+	auto cmdBuffers = device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{ commandPool, vk::CommandBufferLevel::ePrimary, 1 });
+	vk::CommandBuffer cb = cmdBuffers[0];
+
+	cb.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+	cb.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{ {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1} });
+	std::vector<vk::BufferImageCopy> copyRegions = { vk::BufferImageCopy{0, 0, 0, vk::ImageSubresourceLayers{vk::ImageAspectFlagBits::eColor, 0, 0, 1}, {0, 0, 0}, {width, height, 1}  } };
+	cb.copyBufferToImage(stagingBuffer, image, vk::ImageLayout::eTransferDstOptimal, copyRegions);
+
+	if (mipLevels > 1) {
+		for (uint32_t i = 1; i < mipLevels; i++) {
+			//transition prev miplevel
+			cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eTransferRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, i - 1, 1, 0, 1} });
+			std::array<vk::Offset3D, 2> srcOffsets = { vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ std::max(static_cast<int32_t>(width >> (i - 1)), 1), std::max(static_cast<int32_t>(height >> (i - 1)), 1), 1 } };
+			std::array<vk::Offset3D, 2> dstOffsets = { vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ std::max(static_cast<int32_t>(width >> i), 1), std::max(static_cast<int32_t>(height >> i), 1), 1 } };
+			//copy from mip i-1 to mip i
+			cb.blitImage(image, vk::ImageLayout::eTransferSrcOptimal, image, vk::ImageLayout::eTransferDstOptimal, vk::ImageBlit{ vk::ImageSubresourceLayers{ {vk::ImageAspectFlagBits::eColor}, i - 1, 0, 1 }, srcOffsets, vk::ImageSubresourceLayers{ {vk::ImageAspectFlagBits::eColor}, i, 0, 1 }, dstOffsets }, vk::Filter::eLinear);
+		}
+		//transition all miplevels to shaderReadOnly
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferRead, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, mipLevels - 1, 0, 1} });
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, mipLevels - 1, 1, 0, 1} });
+	}
+	else
+		cb.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, vk::ImageMemoryBarrier{ vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1} });
+
+	cb.end();
+
+	vk::Fence fence = device.createFence(vk::FenceCreateInfo{});
+	this->graphicsQueue.submit(vk::SubmitInfo{ {}, {}, cb, {} }, fence);
+	device.waitForFences(fence, true, UINT64_MAX);
+	allocator.destroyBuffer(stagingBuffer, stagingBufferAllocation);
+	device.freeCommandBuffers(commandPool, cb);
+	device.destroyFence(fence);
+
+	imageTable.insert({ this->nextImageId, image });
+	imageAllocationTable.insert({ this->nextImageId, imageAllocation });
+	imageFormatTable.insert({ this->nextImageId, format });
+	return this->nextImageId++;
+}
+
+Texture VulkanRenderer::makeTexture(Image imageId, Sampler samplerData) {
+	vk::ImageView imageView = device.createImageView(vk::ImageViewCreateInfo{ {}, this->imageTable[imageId], vk::ImageViewType::e2D, this->imageFormatTable[imageId], vk::ComponentMapping{}, vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, VK_REMAINING_MIP_LEVELS, 0, 1 } });
+
+	vk::Sampler sampler = device.createSampler(vk::SamplerCreateInfo{ {},
+		samplerData.magFilter == SamplerFilter::eLinear ? vk::Filter::eLinear : vk::Filter::eNearest,
+		samplerData.minFilter == SamplerFilter::eLinear ? vk::Filter::eLinear : vk::Filter::eNearest,
+		samplerData.mipmapFilter == SamplerFilter::eLinear ? vk::SamplerMipmapMode::eLinear : vk::SamplerMipmapMode::eNearest,
+		samplerData.wrapU == SamplerWrap::eRepeat ? vk::SamplerAddressMode::eRepeat : samplerData.wrapU == SamplerWrap::eMirror ? vk::SamplerAddressMode::eMirroredRepeat : vk::SamplerAddressMode::eClampToEdge,
+		samplerData.wrapV == SamplerWrap::eRepeat ? vk::SamplerAddressMode::eRepeat : samplerData.wrapU == SamplerWrap::eMirror ? vk::SamplerAddressMode::eMirroredRepeat : vk::SamplerAddressMode::eClampToEdge,
+		vk::SamplerAddressMode::eClampToEdge,
+		0.0f,
+		true,
+		this->physicalDevice.getProperties().limits.maxSamplerAnisotropy,
+		false,
+		vk::CompareOp::eNever,
+		0.0f,
+		VK_LOD_CLAMP_NONE 
+	});
+
+	textureImageViewTable.insert({ this->nextImageId, imageView });
+	textureSamplerTable.insert({ this->nextImageId, sampler });
+	return this->nextImageId++;
 }
 
 void VulkanRenderer::setMeshes(const std::vector<Mesh>& meshes) {
@@ -841,19 +926,15 @@ void VulkanRenderer::createPipeline() {
 	}
 }
 
-bool VulkanRenderer::cullMesh(const MeshPrimitive& mesh) {
-	return this->cullMesh(mesh, this->_camera);
-}
-
-bool VulkanRenderer::cullMesh(const MeshPrimitive& mesh, const Camera& pov) {
-	const auto& planes = pov.getFrustumPlanesLocalSpace(mesh.node->modelMatrix()); //planes pointing inside frustum
+bool VulkanRenderer::shouldCullMesh(const MeshPrimitive& mesh, const Node& node, const Camera& pov) {
+	const auto& planes = pov.getFrustumPlanesLocalSpace(node.modelMatrix()); //planes pointing inside frustum
 
 	for (auto& plane : planes) {
-		glm::vec3 nVertex = mesh.boundingBox.first;
+		glm::vec3 nVertex = mesh.bbMin();
 
-		if (plane.x >= 0.0f) nVertex.x = mesh.boundingBox.second.x;
-		if (plane.y >= 0.0f) nVertex.y = mesh.boundingBox.second.y;
-		if (plane.z >= 0.0f) nVertex.z = mesh.boundingBox.second.z;
+		if (plane.x >= 0.0f) nVertex.x = mesh.bbMax().x;
+		if (plane.y >= 0.0f) nVertex.y = mesh.bbMax().y;
+		if (plane.z >= 0.0f) nVertex.z = mesh.bbMax().z;
 
 		if (glm::dot(nVertex, glm::vec3(plane)) + plane.w < 0.0f) //negative halfspace (plane equation)
 			return true;
@@ -861,23 +942,10 @@ bool VulkanRenderer::cullMesh(const MeshPrimitive& mesh, const Camera& pov) {
 	return false;
 }
 
-constexpr vk::IndexType vkIndexTypeFromAttributeValueType(AttributeValueType valueType) {
-	switch (valueType) {
-	case AttributeValueType::eUint8:
-		return vk::IndexType::eUint8EXT;
-	case AttributeValueType::eUint32:
-		return vk::IndexType::eUint32;
-	case AttributeValueType::eUint16:
-		return vk::IndexType::eUint16;
-	default:
-		return vk::IndexType::eNoneKHR;
-	}
-}
-
 void VulkanRenderer::drawMeshes(const std::vector<std::shared_ptr<MeshPrimitive>>& meshes, const vk::CommandBuffer& cb, uint32_t frameIndex, const glm::mat4& viewproj, const glm::vec3& cameraPos, bool frustumCull, MeshSortingMode sortingMode) {
 
 	auto culledMeshes = iter::filter([this](const std::shared_ptr<MeshPrimitive> mesh) {
-		return !this->cullMesh(*mesh);
+		return !this->shouldCullMesh(*mesh);
 		}, meshes);
 
 	std::vector<std::shared_ptr<MeshPrimitive>> sortedMeshes;
@@ -954,10 +1022,9 @@ void VulkanRenderer::renderLoop() {
 		runningTime += deltaTime;
 		frameTime = newFrameTime;
 
-		for (const auto& n : this->rootNodes) {
-			n->setAnimationTime(runningTime);
+		/*for (const auto& n : this->rootNodes) {
 			n->recalculateModel(glm::mat4{ 1.0f });
-		}
+		}*/
 
 		glm::vec3 cameraPos;
 		glm::mat4 viewproj;
